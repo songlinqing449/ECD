@@ -19,9 +19,6 @@
   .btn{padding:10px 18px;border-radius:24px;border:1px solid var(--border);background:var(--panel-bg);color:var(--text);cursor:pointer;font-size:.85rem;font-family:inherit;backdrop-filter:blur(12px);transition:all .25s;white-space:nowrap}
   .btn:hover{background:rgba(40,40,70,.9);border-color:rgba(255,255,255,.25)}
   .btn.active{background:rgba(77,166,255,.25);border-color:var(--accent);color:#fff;box-shadow:0 0 16px rgba(77,166,255,.3)}
-  .btn.switch-btn{background:rgba(155,127,212,.2);border-color:var(--violet);color:var(--violet)}
-  .btn.switch-btn:hover{background:rgba(155,127,212,.35);box-shadow:0 0 20px rgba(155,127,212,.3)}
-  .btn.switch-btn.active{background:rgba(155,127,212,.4);box-shadow:0 0 24px rgba(155,127,212,.5)}
   .btn.dim-btn{background:rgba(240,192,96,.15);border-color:var(--gold);color:var(--gold)}
   .btn.dim-btn:hover{background:rgba(240,192,96,.28);box-shadow:0 0 20px rgba(240,192,96,.25)}
   .btn.dim-btn.active{background:rgba(240,192,96,.3);box-shadow:0 0 20px rgba(240,192,96,.4)}
@@ -61,7 +58,7 @@
     <button class="btn active" id="btn-exploded" onclick="window.setView('exploded')">💥 分解视图</button>
     <button class="btn" id="btn-stacked" onclick="window.setView('stacked')">📐 堆叠视图</button>
     <button class="btn dim-btn" id="btn-dims" onclick="window.toggleDims()" style="opacity:0.4;pointer-events:none">📏 尺寸标注</button>
-    <button class="btn switch-btn" id="btn-switch" onclick="window.toggleSwitch()">⚡ 开关变色</button>
+    <button class="btn" id="btn-switch" onclick="window.toggleSwitch()">⚡ 开关变色</button>
     <button class="btn" id="btn-reset" onclick="window.resetCamera()">🔄 重置视角</button>
   </div>
 </div>
@@ -170,13 +167,55 @@ const annotGroup=new THREE.Group();world.add(annotGroup);
 
 // ── Core layers ──
 const layerMeshes=[];
+const gelParticles=[]; // internal scatter particles for gel layer
+
 layers.forEach((layer,idx)=>{
-  const geo=new THREE.BoxGeometry(GLASS_SIDE,layer.thickness,GLASS_SIDE,2,1,2);
-  const mat=new THREE.MeshPhysicalMaterial({color:new THREE.Color(layer.color),metalness:layer.metalness,roughness:layer.roughness,transparent:true,opacity:layer.opacity,envMapIntensity:0.35,clearcoat:layer.clearcoat||0,clearcoatRoughness:0.1,specularIntensity:0.5});
+  const isGel=layer.isGel;
+  const geo=new THREE.BoxGeometry(isGel?GLASS_SIDE-0.06:GLASS_SIDE,layer.thickness,isGel?GLASS_SIDE-0.06:GLASS_SIDE,2,1,2);
+  const mat=new THREE.MeshPhysicalMaterial({
+    color:new THREE.Color(layer.color),metalness:layer.metalness,roughness:isGel?0.25:layer.roughness,
+    transparent:true,opacity:isGel?0.65:layer.opacity,envMapIntensity:0.35,
+    clearcoat:isGel?0.6:(layer.clearcoat||0),clearcoatRoughness:isGel?0.05:0.1,
+    specularIntensity:isGel?0.8:0.5,
+    // Subsurface-like gel properties
+    ...(isGel?{attenuationColor:new THREE.Color(0xe8dfd0),attenuationDistance:0.8,thickness:layer.thickness*2,ior:1.42}:{})
+  });
   const mesh=new THREE.Mesh(geo,mat);mesh.castShadow=true;mesh.receiveShadow=true;
   mesh.userData={layerIndex:idx,layerData:layer};
-  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.1,depthTest:true})));
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:isGel?0.04:0.1,depthTest:true})));
   layerMeshes.push(mesh);coreGroup.add(mesh);
+
+  // Gel layer: add internal scattering particles to simulate realistic gel texture
+  if(isGel){
+    const hw=GLASS_SIDE/2-0.06, hh=layer.thickness/2-0.02;
+    for(let pi=0;pi<80;pi++){
+      const pr=(Math.random()*0.03+0.01);
+      const pGeo2=new THREE.SphereGeometry(pr,4,4);
+      const pMat2=new THREE.MeshPhysicalMaterial({
+        color:0xffffff,metalness:0,roughness:0.8,transparent:true,opacity:0.35,
+        envMapIntensity:0,clearcoat:0,specularIntensity:0
+      });
+      const particle=new THREE.Mesh(pGeo2,pMat2);
+      particle.position.set((Math.random()-0.5)*2*hw*0.85,(Math.random()-0.5)*2*hh*0.7,(Math.random()-0.5)*2*hw*0.85);
+      particle.userData={isGelParticle:true};
+      mesh.add(particle);
+      gelParticles.push({mesh:particle,baseOpacity:0.35});
+    }
+    // A few larger "bubble" voids
+    for(let bi=0;bi<15;bi++){
+      const br=(Math.random()*0.06+0.03);
+      const bGeo=new THREE.SphereGeometry(br,6,6);
+      const bMat=new THREE.MeshPhysicalMaterial({
+        color:0xffffff,metalness:0,roughness:0.4,transparent:true,opacity:0.18,
+        envMapIntensity:0
+      });
+      const bubble=new THREE.Mesh(bGeo,bMat);
+      bubble.position.set((Math.random()-0.5)*2*hw*0.75,(Math.random()-0.5)*2*hh*0.6,(Math.random()-0.5)*2*hw*0.75);
+      bubble.userData={isGelBubble:true};
+      mesh.add(bubble);
+      gelParticles.push({mesh:bubble,baseOpacity:0.18});
+    }
+  }
 });
 
 // ── Resin Frame ──
@@ -410,7 +449,40 @@ function toggleDims(){if(currentView!=='stacked')return;showAnnotations=!showAnn
 //  TOGGLE SWITCH — 0档(透明) / 1档(着色)
 // ═══════════════════════════
 function toggleSwitch(){switchOn=!switchOn;applyGelColor();updateToggleVisual();updateSwitchUI();const btn=document.getElementById('btn-switch');btn.classList.toggle('active',switchOn);btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';}
-function applyGelColor(){const gel=layerMeshes[1];const d=layers[1];if(switchOn){gel.material.color.set(d.colorOn);gel.material.opacity=0.82;gel.material.emissive=new THREE.Color(d.colorOn);gel.material.emissiveIntensity=0.3;}else{gel.material.color.set(d.color);gel.material.opacity=d.opacity;gel.material.emissive=new THREE.Color(0x000000);gel.material.emissiveIntensity=0;}}
+function applyGelColor(){
+  const gel=layerMeshes[1];const d=layers[1];
+  if(switchOn){
+    // Violet-tinted gel
+    gel.material.color.set(d.colorOn);
+    gel.material.opacity=0.78;
+    gel.material.emissive=new THREE.Color(d.colorOn);
+    gel.material.emissiveIntensity=0.35;
+    gel.material.attenuationColor=new THREE.Color(d.colorOn);
+    gel.material.attenuationDistance=0.5;
+    // Tint internal particles violet
+    gel.traverse(c=>{
+      if(c.userData&&(c.userData.isGelParticle||c.userData.isGelBubble)){
+        c.material.color.set(d.colorOn);
+        c.material.opacity=c.userData.isGelBubble?0.3:0.5;
+      }
+    });
+  }else{
+    // Clear/translucent gel
+    gel.material.color.set(d.color);
+    gel.material.opacity=d.opacity;
+    gel.material.emissive=new THREE.Color(0x000000);
+    gel.material.emissiveIntensity=0;
+    gel.material.attenuationColor=new THREE.Color(0xe8dfd0);
+    gel.material.attenuationDistance=0.8;
+    // Restore internal particles to clear
+    gel.traverse(c=>{
+      if(c.userData&&(c.userData.isGelParticle||c.userData.isGelBubble)){
+        c.material.color.set(0xffffff);
+        c.material.opacity=c.userData.isGelBubble?0.18:0.35;
+      }
+    });
+  }
+}
 function updateToggleVisual(){togglePivot.rotation.x=switchOn?-0.55:0.55;if(switchOn)ledDot.material=ledOnMat2.clone();else ledDot.material=ledOffMat2.clone();}
 function updateSwitchUI(){const bar=document.getElementById('switch-label-bar');if(currentView==='stacked'){bar.classList.add('visible');document.getElementById('status-dot').style.background=switchOn?'#9b7fd4':'#666';document.getElementById('status-dot').style.boxShadow=switchOn?'0 0 10px #9b7fd4':'0 0 4px #666';document.getElementById('status-text').textContent=switchOn?'凝胶层：紫罗兰色 (1 档 — 着色态)':'凝胶层：透明 (0 档 — 褪色态)';}else{bar.classList.remove('visible');}}
 
@@ -436,8 +508,8 @@ function getIntersections(ev){mouse.x=(ev.clientX/container.clientWidth)*2-1;mou
 container.addEventListener('mousemove',ev=>{const hits=getIntersections(ev);if(hits.length>0){let obj=hits[0].object;while(obj){if(obj.userData&&obj.userData.isSwitch){container.classList.add('pointer');if(hoveredLayer){resetHighlight();hoveredLayer=null;}return;}if(obj.userData&&obj.userData.layerData){container.classList.add('pointer');if(hoveredLayer!==obj){resetHighlight();hoveredLayer=obj;highlightLayer(obj,true);}return;}obj=obj.parent;}}container.classList.remove('pointer');if(hoveredLayer){resetHighlight();hoveredLayer=null;}updateLegendHighlight(null);});
 container.addEventListener('click',ev=>{const hits=getIntersections(ev);if(hits.length>0){let obj=hits[0].object;while(obj){if(obj.userData&&obj.userData.isSwitch){toggleSwitch();return;}if(obj.userData&&obj.userData.layerData){selectLayer(obj);return;}obj=obj.parent;}}});
 
-function highlightLayer(mesh,on){const idx=mesh.userData.layerIndex,layer=layers[idx];if(on){mesh.material.emissive=new THREE.Color(layer.color);mesh.material.emissiveIntensity=0.4;mesh.material.opacity=Math.min(layer.opacity+0.2,0.95);mesh.scale.set(1.04,1,1.04);}else{mesh.material.emissive=new THREE.Color(0x000000);mesh.material.emissiveIntensity=0;mesh.material.opacity=(idx===1&&switchOn)?0.82:layer.opacity;mesh.scale.set(1,1,1);if(idx===1&&switchOn){mesh.material.color.set(layer.colorOn);mesh.material.emissive=new THREE.Color(layer.colorOn);mesh.material.emissiveIntensity=0.3;}else if(idx===1)mesh.material.color.set(layer.color);}updateLegendHighlight(on?idx:null);}
-function resetHighlight(){layerMeshes.forEach((m,i)=>{m.material.emissive=new THREE.Color(0x000000);m.material.emissiveIntensity=0;m.material.opacity=(i===1&&switchOn)?0.82:layers[i].opacity;m.scale.set(1,1,1);if(i===1&&switchOn){m.material.color.set(layers[i].colorOn);m.material.emissive=new THREE.Color(layers[i].colorOn);m.material.emissiveIntensity=0.3;}else if(i===1)m.material.color.set(layers[i].color);});}
+function highlightLayer(mesh,on){const idx=mesh.userData.layerIndex,layer=layers[idx];if(on){mesh.material.emissive=new THREE.Color(layer.color);mesh.material.emissiveIntensity=0.4;mesh.material.opacity=Math.min(layer.opacity+0.2,0.95);mesh.scale.set(1.04,1,1.04);}else{mesh.material.emissive=new THREE.Color(0x000000);mesh.material.emissiveIntensity=0;mesh.material.opacity=(idx===1&&switchOn)?0.78:layer.opacity;mesh.scale.set(1,1,1);if(idx===1&&switchOn){mesh.material.color.set(layer.colorOn);mesh.material.emissive=new THREE.Color(layer.colorOn);mesh.material.emissiveIntensity=0.35;}else if(idx===1)mesh.material.color.set(layer.color);}updateLegendHighlight(on?idx:null);}
+function resetHighlight(){layerMeshes.forEach((m,i)=>{m.material.emissive=new THREE.Color(0x000000);m.material.emissiveIntensity=0;m.material.opacity=(i===1&&switchOn)?0.78:layers[i].opacity;m.scale.set(1,1,1);if(i===1&&switchOn){m.material.color.set(layers[i].colorOn);m.material.emissive=new THREE.Color(layers[i].colorOn);m.material.emissiveIntensity=0.35;}else if(i===1)m.material.color.set(layers[i].color);});}
 function selectLayer(mesh){const idx=mesh.userData.layerIndex,layer=layers[idx];if(selectedLayer===mesh){closeDetail();return;}if(selectedLayer)resetHighlight();selectedLayer=mesh;highlightLayer(mesh,true);document.getElementById('detail-title').textContent=`第 ${layer.num} 层 — ${layer.name}`;document.getElementById('detail-eng').textContent=layer.eng;document.getElementById('detail-desc').textContent=layer.desc;document.getElementById('detail-materials').innerHTML=layer.materials.map(m=>`<span class="material-tag">${m}</span>`).join('');document.getElementById('detail-popup').classList.add('visible');const wp=new THREE.Vector3();mesh.getWorldPosition(wp);animateCam(new THREE.Vector3(wp.x+5,wp.y,wp.z+6),wp);}
 function closeDetail(){document.getElementById('detail-popup').classList.remove('visible');if(selectedLayer){resetHighlight();selectedLayer=null;}updateLegendHighlight(null);}
 function animateCam(to,look){const sp=camera.position.clone(),sl=controls.target.clone(),st=performance.now(),dur=800;function step(t){const e=Math.min((t-st)/dur,1),ease=e<.5?2*e*e:-1+(4-2*e)*e;camera.position.lerpVectors(sp,to,ease);controls.target.lerpVectors(sl,look,ease);controls.update();if(e<1)requestAnimationFrame(step);}requestAnimationFrame(step);}
