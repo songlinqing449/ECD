@@ -133,7 +133,7 @@ const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x0a0a18);
 scene.fog=new THREE.Fog(0x0a0a18,18,55);
 const camera=new THREE.PerspectiveCamera(45,container.clientWidth/container.clientHeight,0.3,80);
-camera.position.set(6,2.5,10);camera.lookAt(0,0,0);
+camera.position.set(8,3.5,10);
 const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 renderer.setSize(container.clientWidth,container.clientHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
@@ -420,10 +420,11 @@ function updateSwitchUI(){const bar=document.getElementById('switch-label-bar');
 const controls=new OrbitControls(camera,renderer.domElement);
 controls.enableDamping=true;controls.dampingFactor=0.08;
 controls.target.set(0,0,0);controls.minDistance=3;controls.maxDistance=30;
-controls.maxPolarAngle=Math.PI*0.78;controls.minPolarAngle=Math.PI*0.12;
+controls.maxPolarAngle=Math.PI*0.78;controls.minPolarAngle=Math.PI*0.08;
 controls.autoRotate=false;controls.update();
-const stackedCamPos=new THREE.Vector3(0,-0.5,12),stackedCamTgt=new THREE.Vector3(0,-0.8,0);
-const explodedCamPos=new THREE.Vector3(6,2.5,10),explodedCamTgt=new THREE.Vector3(0,0,0);
+// In stacked view, the device+base spans from Y≈-2.4 to Y≈1.65, center ≈ -0.37
+const stackedCamPos=new THREE.Vector3(0,-0.35,14),stackedCamTgt=new THREE.Vector3(0,-0.35,0);
+const explodedCamPos=new THREE.Vector3(8,3.5,10),explodedCamTgt=new THREE.Vector3(0,0,0);
 function resetCamera(){if(currentView==='stacked'){camera.position.copy(stackedCamPos);controls.target.copy(stackedCamTgt);}else{camera.position.copy(explodedCamPos);controls.target.copy(explodedCamTgt);}controls.update();}
 
 // ═══════════════════════════
