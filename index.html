@@ -5,10 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>电致变色器件 (ECD) - 交互式3D模型</title>
 <style>
-  :root {
-    --bg: #0a0a14; --panel-bg: rgba(16,16,30,0.95); --text: #e0e0e0;
-    --accent: #4da6ff; --violet: #9b7fd4; --gold: #f0c060; --border: rgba(255,255,255,0.1);
-  }
+  :root{--bg:#0a0a14;--panel-bg:rgba(16,16,30,0.95);--text:#e0e0e0;--accent:#4da6ff;--violet:#9b7fd4;--gold:#f0c060;--border:rgba(255,255,255,.1)}
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:var(--bg);font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;overflow:hidden;height:100vh;width:100vw;user-select:none;-webkit-user-select:none}
   #canvas-container{position:fixed;inset:0;cursor:grab}
@@ -67,7 +64,7 @@
   <h2 id="detail-title"></h2><div class="eng" id="detail-eng"></div><p id="detail-desc"></p><div id="detail-materials"></div>
 </div>
 <div id="switch-label-bar"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle" id="status-dot"></span><span id="status-text">凝胶层：透明 (0档)</span></div>
-<div id="hint">🖱 拖动旋转 &nbsp;|&nbsp; 滚轮缩放 &nbsp;|&nbsp; 右键平移 &nbsp;|&nbsp; 点击器件层或开关</div>
+<div id="hint">🖱 拖动旋转 | 滚轮缩放 | 右键平移 | 点击器件层或开关</div>
 
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
@@ -76,323 +73,297 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// ═══════════════════════════════════════════════
-//  DIMENSIONS (cm) — scale factor 0.3 → 3D units
-// ═══════════════════════════════════════════════
-const S  = 0.3;
-const sc = v => v * S;
+// ═══════════════════════════
+//  DIMENSIONS — scale 0.3 cm→unit
+// ═══════════════════════════
+const S=0.3, sc=v=>v*S;
+const GLASS_SIDE=sc(10), GLASS_THICK=sc(0.35);
+const GEL_THICK=sc(0.5);
+const DEVICE_THICK=GLASS_THICK*2+GEL_THICK;
+const FRAME_OUTER=sc(11), FRAME_BAR=sc(0.5);
+const BASE_L=sc(15), BASE_W=sc(6), BASE_H=sc(2.0);
+const BATT_L=sc(6.5), BATT_W=sc(5.0), BATT_D=sc(1.65);
+const AA_R=sc(0.7), AA_L=sc(5.0);
 
-// Glass (ITO conductive glass) — 10×10 cm
-const GLASS_SIDE   = sc(10);
-const GLASS_THICK  = sc(0.35);
-const GEL_SIDE     = sc(10);
-const GEL_THICK    = sc(0.5);
-const DEVICE_THICK = GLASS_THICK*2 + GEL_THICK;
+// Rocker switch (船型开关): approx 21×15 mm body, rocker sits on top
+const RSW_W=sc(2.1);   // length (along X, parallel to base length)
+const RSW_D=sc(1.5);   // width  (along Z)
+const RSW_H=sc(0.7);   // body height below panel
+const RSW_BEZEL_H=sc(0.12); // bezel flange above panel
+const RSW_ROCKER_H=sc(0.55); // rocker visible height above bezel
 
-// Resin frame — 11 cm outer
-const FRAME_OUTER  = sc(11);
-const FRAME_BAR    = sc(0.5);
-
-// Base — 15×6 cm, 2 cm thick (to fully enclose batteries)
-const BASE_L = sc(15);
-const BASE_W = sc(6);
-const BASE_H = sc(2.0);
-
-// Battery compartment — 6.5×5×1.6 cm (fully inside base)
-const BATT_L = sc(6.5);
-const BATT_W = sc(5.0);
-const BATT_D = sc(1.65);  // just enough for AA (1.4cm) + walls
-
-// AA battery — Ø1.4 cm × 5.0 cm
-const AA_R = sc(0.7);
-const AA_L = sc(5.0);
-
-// Rocker switch dimensions
-const RSW_W = sc(2.2);   // length
-const RSW_D = sc(1.3);   // width
-const RSW_H = sc(0.9);   // body height
-const RSW_ROCKER_H = sc(0.45); // rocker visible height above body
-
-// ═══════════════════════
+// ═══════════════════════════
 //  LAYER DATA
-// ═══════════════════════
-const layers = [
-  {
-    id:'ito-glass-top', num:1, name:'ITO 透明导电玻璃（上）', shortName:'ITO导电玻璃（上）',
-    eng:'ITO Coated Glass — Top Electrode',
-    desc:'钠钙玻璃基底上磁控溅射 ITO (In₂O₃:Sn) 透明导电薄膜，一体成型。作为工作电极，为下方凝胶层提供均匀电场。方块电阻 < 20 Ω/sq，光学透过率 > 90%。',
-    materials:['钠钙玻璃','ITO (In₂O₃:Sn)','FTO','AZO'],
-    color:0xa8cfd4, opacity:0.55, thickness:GLASS_THICK, metalness:0.08, roughness:0.18, clearcoat:0.4
-  },
-  {
-    id:'gel-layer', num:2, name:'凝胶变色层', shortName:'凝胶变色层',
-    eng:'Gel Electrochromic Composite Layer',
-    desc:'器件核心——电致变色材料 (WO₃)、电解质 (LiClO₄/PC) 与离子存储材料 (NiO) 复合而成的一体化凝胶。船型开关拨至 1 档 → +3V 电压 → Li⁺注入 → 紫罗兰色着色；拨回 0 档 → -3V → 恢复透明。双稳态，断电后颜色保持。',
-    materials:['WO₃/PEDOT:PSS 着色剂','LiClO₄/PC 电解质','NiO/CeO₂ 离子存储','PMMA 凝胶基质'],
-    color:0xe8dfd0, colorOn:0x7b5ea7, opacity:0.58, thickness:GEL_THICK, metalness:0.0, roughness:0.55, isGel:true
-  },
-  {
-    id:'ito-glass-bottom', num:3, name:'ITO 透明导电玻璃（下）', shortName:'ITO导电玻璃（下）',
-    eng:'ITO Coated Glass — Bottom Electrode',
-    desc:'底部 ITO 导电玻璃，与上层玻璃对称。作为对电极，施加反向电压时驱动 Li⁺ 迁回电解质，凝胶恢复透明。上下玻璃通过边缘环氧树脂密封，形成密闭凝胶腔体。',
-    materials:['钠钙玻璃','ITO (In₂O₃:Sn)','FTO','AZO'],
-    color:0xa8cfd4, opacity:0.55, thickness:GLASS_THICK, metalness:0.08, roughness:0.18, clearcoat:0.4
-  },
-];
+// ═══════════════════════════
+const layers=[{
+  id:'ito-glass-top',num:1,name:'ITO 透明导电玻璃（上）',shortName:'ITO导电玻璃（上）',
+  eng:'ITO Coated Glass — Top Electrode',
+  desc:'钠钙玻璃基底上磁控溅射 ITO (In₂O₃:Sn) 透明导电薄膜，一体成型。作为工作电极，为下方凝胶层提供均匀电场。',
+  materials:['钠钙玻璃','ITO (In₂O₃:Sn)','FTO','AZO'],
+  color:0xa8cfd4,opacity:0.55,thickness:GLASS_THICK,metalness:0.08,roughness:0.18,clearcoat:0.4
+},{
+  id:'gel-layer',num:2,name:'凝胶变色层',shortName:'凝胶变色层',
+  eng:'Gel Electrochromic Composite Layer',
+  desc:'器件核心——WO₃ + 电解质 + NiO 离子存储复合一体化凝胶。船型开关拨至 1 档 → +3V → 紫罗兰色着色；拨回 0 档 → -3V → 恢复透明。',
+  materials:['WO₃/PEDOT:PSS','LiClO₄/PC 电解质','NiO/CeO₂ 离子存储','PMMA 凝胶基质'],
+  color:0xe8dfd0,colorOn:0x7b5ea7,opacity:0.58,thickness:GEL_THICK,metalness:0.0,roughness:0.55,isGel:true
+},{
+  id:'ito-glass-bottom',num:3,name:'ITO 透明导电玻璃（下）',shortName:'ITO导电玻璃（下）',
+  eng:'ITO Coated Glass — Bottom Electrode',
+  desc:'底部 ITO 导电玻璃，与上层对称。作为对电极，施加反向电压时驱动 Li⁺ 迁回。上下玻璃通过边缘环氧树脂密封。',
+  materials:['钠钙玻璃','ITO (In₂O₃:Sn)','FTO','AZO'],
+  color:0xa8cfd4,opacity:0.55,thickness:GLASS_THICK,metalness:0.08,roughness:0.18,clearcoat:0.4
+}];
 
-// ═══════════════════════
+// ═══════════════════════════
 //  THREE.JS SETUP
-// ═══════════════════════
-const container = document.getElementById('canvas-container');
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0a18);
-scene.fog = new THREE.Fog(0x0a0a18, 18, 55);
-
-const camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.3, 80);
-camera.position.set(8, 5, 14);
-camera.lookAt(0, -0.3, 0);
-
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-renderer.setSize(container.clientWidth, container.clientHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+// ═══════════════════════════
+const container=document.getElementById('canvas-container');
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0a18);
+scene.fog=new THREE.Fog(0x0a0a18,18,55);
+const camera=new THREE.PerspectiveCamera(45,container.clientWidth/container.clientHeight,0.3,80);
+camera.position.set(8,5,14);camera.lookAt(0,-0.3,0);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setSize(container.clientWidth,container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
 container.appendChild(renderer.domElement);
 
 // Lighting
-scene.add(new THREE.AmbientLight(0x334466, 2.5));
-const keyLight = new THREE.DirectionalLight(0xffffff, 5.5);
-keyLight.position.set(10,16,10); keyLight.castShadow=true;
-keyLight.shadow.mapSize.set(2048,2048); keyLight.shadow.camera.near=0.5; keyLight.shadow.camera.far=70;
-keyLight.shadow.camera.left=-15; keyLight.shadow.camera.right=15;
-keyLight.shadow.camera.top=15; keyLight.shadow.camera.bottom=-15; keyLight.shadow.bias=-0.0001;
+scene.add(new THREE.AmbientLight(0x334466,2.5));
+const keyLight=new THREE.DirectionalLight(0xffffff,5.5);
+keyLight.position.set(10,16,10);keyLight.castShadow=true;
+keyLight.shadow.mapSize.set(2048,2048);keyLight.shadow.camera.near=0.5;keyLight.shadow.camera.far=70;
+keyLight.shadow.camera.left=-15;keyLight.shadow.camera.right=15;
+keyLight.shadow.camera.top=15;keyLight.shadow.camera.bottom=-15;keyLight.shadow.bias=-0.0001;
 scene.add(keyLight);
-const fl = new THREE.DirectionalLight(0x8899cc,2); fl.position.set(-5,3,-4); scene.add(fl);
-const rl = new THREE.DirectionalLight(0xaaccff,3); rl.position.set(0,-1,8); scene.add(rl);
+const fl=new THREE.DirectionalLight(0x8899cc,2);fl.position.set(-5,3,-4);scene.add(fl);
+const rl=new THREE.DirectionalLight(0xaaccff,3);rl.position.set(0,-1,8);scene.add(rl);
 scene.add(new THREE.PointLight(0xffffff,6,20)).position.set(0,12,0);
 
 // Ground shadow
-const gnd = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.ShadowMaterial({opacity:0.22}));
-gnd.rotation.x=-Math.PI/2; gnd.position.y=-8; gnd.receiveShadow=true; scene.add(gnd);
+const gnd=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:0.22}));
+gnd.rotation.x=-Math.PI/2;gnd.position.y=-8;gnd.receiveShadow=true;scene.add(gnd);
 
 // Particles
-const pGeo = new THREE.BufferGeometry(); const pArr = new Float32Array(500*3);
+const pGeo=new THREE.BufferGeometry();const pArr=new Float32Array(500*3);
 for(let i=0;i<500;i++){pArr[i*3]=(Math.random()-.5)*22;pArr[i*3+1]=(Math.random()-.5)*14;pArr[i*3+2]=(Math.random()-.5)*16}
 pGeo.setAttribute('position',new THREE.BufferAttribute(pArr,3));
-const pts = new THREE.Points(pGeo,new THREE.PointsMaterial({size:0.02,color:0x4488cc,transparent:true,opacity:0.45,blending:THREE.AdditiveBlending,depthWrite:false}));
+const pts=new THREE.Points(pGeo,new THREE.PointsMaterial({size:0.02,color:0x4488cc,transparent:true,opacity:0.45,blending:THREE.AdditiveBlending,depthWrite:false}));
 scene.add(pts);
 
-// ═══════════════════════
-//  BUILD DEVICE
-// ═══════════════════════
-const world = new THREE.Group(); scene.add(world);
-const coreGroup = new THREE.Group(); world.add(coreGroup);
-const baseGroup = new THREE.Group(); world.add(baseGroup);
-const annotGroup = new THREE.Group(); world.add(annotGroup);
+// ═══════════════════════════
+//  BUILD
+// ═══════════════════════════
+const world=new THREE.Group();scene.add(world);
+const coreGroup=new THREE.Group();world.add(coreGroup);
+const baseGroup=new THREE.Group();world.add(baseGroup);
+const annotGroup=new THREE.Group();world.add(annotGroup);
 
 // ── Core layers ──
-const layerMeshes = [];
-layers.forEach((layer, idx) => {
-  const geo = new THREE.BoxGeometry(GLASS_SIDE, layer.thickness, GLASS_SIDE, 2,1,2);
-  const mat = new THREE.MeshPhysicalMaterial({
-    color:new THREE.Color(layer.color), metalness:layer.metalness, roughness:layer.roughness,
-    transparent:true, opacity:layer.opacity, envMapIntensity:0.35,
-    clearcoat:layer.clearcoat||0, clearcoatRoughness:0.1, specularIntensity:0.5,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow=true; mesh.receiveShadow=true;
-  mesh.userData={layerIndex:idx, layerData:layer};
-  const eg = new THREE.EdgesGeometry(geo);
-  mesh.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.1,depthTest:true})));
-  layerMeshes.push(mesh);
-  coreGroup.add(mesh);
+const layerMeshes=[];
+layers.forEach((layer,idx)=>{
+  const geo=new THREE.BoxGeometry(GLASS_SIDE,layer.thickness,GLASS_SIDE,2,1,2);
+  const mat=new THREE.MeshPhysicalMaterial({color:new THREE.Color(layer.color),metalness:layer.metalness,roughness:layer.roughness,transparent:true,opacity:layer.opacity,envMapIntensity:0.35,clearcoat:layer.clearcoat||0,clearcoatRoughness:0.1,specularIntensity:0.5});
+  const mesh=new THREE.Mesh(geo,mat);mesh.castShadow=true;mesh.receiveShadow=true;
+  mesh.userData={layerIndex:idx,layerData:layer};
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.1,depthTest:true})));
+  layerMeshes.push(mesh);coreGroup.add(mesh);
 });
 
 // ── Resin Frame ──
-const frameGroup = new THREE.Group(); coreGroup.add(frameGroup);
-const frameMat = new THREE.MeshStandardMaterial({color:0x1a1a1c, metalness:0.04, roughness:0.72});
-const hg = GLASS_SIDE/2;
-const fbx = hg + FRAME_BAR/2, fbz = hg + FRAME_BAR/2;
+const frameGroup=new THREE.Group();coreGroup.add(frameGroup);
+const frameMat=new THREE.MeshStandardMaterial({color:0x1a1a1c,metalness:0.04,roughness:0.72});
+const hg=GLASS_SIDE/2,fbx=hg+FRAME_BAR/2,fbz=hg+FRAME_BAR/2;
 function addFrameBar(w,h,d,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),frameMat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;frameGroup.add(m);}
-addFrameBar(FRAME_OUTER,DEVICE_THICK,FRAME_BAR,0,0, fbz);
+addFrameBar(FRAME_OUTER,DEVICE_THICK,FRAME_BAR,0,0,fbz);
 addFrameBar(FRAME_OUTER,DEVICE_THICK,FRAME_BAR,0,0,-fbz);
-addFrameBar(FRAME_BAR,  DEVICE_THICK,GLASS_SIDE, fbx,0,0);
-addFrameBar(FRAME_BAR,  DEVICE_THICK,GLASS_SIDE,-fbx,0,0);
+addFrameBar(FRAME_BAR,DEVICE_THICK,GLASS_SIDE,fbx,0,0);
+addFrameBar(FRAME_BAR,DEVICE_THICK,GLASS_SIDE,-fbx,0,0);
 
-// ═══════════════════════
-//  RESIN BASE (15×6×2 cm, thick enough to enclose batteries)
-// ═══════════════════════
-const baseBodyGeo = new THREE.BoxGeometry(BASE_L, BASE_H, BASE_W, 1,1,1);
-const baseBodyMat = new THREE.MeshStandardMaterial({color:0x1c1c1e, metalness:0.06, roughness:0.68});
-const baseBody = new THREE.Mesh(baseBodyGeo, baseBodyMat);
-baseBody.castShadow=true; baseBody.receiveShadow=true; baseBody.userData={isBase:true};
-baseBody.position.y = BASE_H/2;
+// ═══════════════════════════
+//  BASE — X-ray (semi-transparent) in stacked view
+// ═══════════════════════════
+const baseBodyGeo=new THREE.BoxGeometry(BASE_L,BASE_H,BASE_W,1,1,1);
+const baseBodyMat=new THREE.MeshStandardMaterial({color:0x1c1c1e,metalness:0.06,roughness:0.68,transparent:true,opacity:0.28,depthWrite:true});
+const baseBody=new THREE.Mesh(baseBodyGeo,baseBodyMat);
+baseBody.castShadow=true;baseBody.receiveShadow=true;baseBody.userData={isBase:true};
+baseBody.position.y=BASE_H/2;baseBody.renderOrder=1;
 baseGroup.add(baseBody);
 
-// Base top plate
-const plateGeo = new THREE.BoxGeometry(BASE_L-0.3, 0.08, BASE_W-0.3, 1,1,1);
-const plate = new THREE.Mesh(plateGeo, new THREE.MeshStandardMaterial({color:0x242426, metalness:0.12, roughness:0.5}));
-plate.position.y = BASE_H/2 + 0.04; plate.receiveShadow=true;
+// Base top plate (also X-ray)
+const plateGeo=new THREE.BoxGeometry(BASE_L-0.3,0.08,BASE_W-0.3,1,1,1);
+const plateMat2=new THREE.MeshStandardMaterial({color:0x242426,metalness:0.12,roughness:0.5,transparent:true,opacity:0.35,depthWrite:true});
+const plate=new THREE.Mesh(plateGeo,plateMat2);
+plate.position.y=BASE_H/2+0.04;plate.receiveShadow=true;plate.renderOrder=1;
 baseGroup.add(plate);
 
-// ═══════════════════════
-//  BATTERY COMPARTMENT — fully inside base, flush with bottom
-// ═══════════════════════
-const battGroup = new THREE.Group(); baseGroup.add(battGroup);
+// Base wireframe outline (so the shape is still readable)
+const baseEdgeGeo=new THREE.EdgesGeometry(baseBodyGeo);
+const baseEdge=new THREE.LineSegments(baseEdgeGeo,new THREE.LineBasicMaterial({color:0x555566,transparent:true,opacity:0.5}));
+baseEdge.position.y=BASE_H/2;
+baseGroup.add(baseEdge);
 
-// The bottom face of the base is at y=0. Battery compartment is a recess cut into
-// the base from the bottom, extending upward. We represent it as a dark box inside.
-const battFloorY = 0.04;     // thin floor at bottom of base
-const battCeilY = BATT_D;    // top of compartment
+// ═══════════════════════════
+//  BATTERY COMPARTMENT — fully inside base
+// ═══════════════════════════
+const battGroup=new THREE.Group();baseGroup.add(battGroup);
+const battFloorY=0.04;
 
-// Compartment housing (dark recessed box)
-const compGeo = new THREE.BoxGeometry(BATT_L, BATT_D, BATT_W);
-const compMat = new THREE.MeshStandardMaterial({color:0x0d0d10, roughness:0.9, metalness:0.02});
-const comp = new THREE.Mesh(compGeo, compMat);
-comp.position.set(0, battFloorY + BATT_D/2, 0);
-battGroup.add(comp);
+// Compartment housing
+const compGeo=new THREE.BoxGeometry(BATT_L,BATT_D,BATT_W);
+const comp=new THREE.Mesh(compGeo,new THREE.MeshStandardMaterial({color:0x0d0d10,roughness:0.9,metalness:0.02}));
+comp.position.set(0,battFloorY+BATT_D/2,0);battGroup.add(comp);
 
 // Inner walls
-const innerGeo = new THREE.BoxGeometry(BATT_L-0.12, BATT_D-0.04, BATT_W-0.12);
-const inner = new THREE.Mesh(innerGeo, new THREE.MeshStandardMaterial({color:0x151518, roughness:0.85, metalness:0.04}));
-inner.position.set(0, battFloorY + BATT_D/2 + 0.01, 0);
-battGroup.add(inner);
+const inner=new THREE.Mesh(new THREE.BoxGeometry(BATT_L-0.12,BATT_D-0.04,BATT_W-0.12),new THREE.MeshStandardMaterial({color:0x151518,roughness:0.85,metalness:0.04}));
+inner.position.set(0,battFloorY+BATT_D/2+0.01,0);battGroup.add(inner);
 
-// AA batteries — 2 side by side, fully inside compartment
-function createAABattery(x, z) {
-  const g = new THREE.Group();
-  const bodyGeo = new THREE.CylinderGeometry(AA_R, AA_R, AA_L, 24);
-  const bodyMat = new THREE.MeshStandardMaterial({color:0xcccccc, metalness:0.7, roughness:0.25});
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.rotation.z = Math.PI/2;
-  body.position.set(0, 0, 0);
-  g.add(body);
-  // Positive cap (brass)
-  const capGeo = new THREE.CylinderGeometry(AA_R*0.7, AA_R, AA_L*0.1, 24);
-  const cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({color:0xd4a840, metalness:0.8, roughness:0.2}));
-  cap.rotation.z = Math.PI/2;
-  cap.position.set(AA_L/2 - AA_L*0.05, 0, 0);
-  g.add(cap);
-  // Negative nub
-  const negGeo = new THREE.CylinderGeometry(AA_R*0.55, AA_R*0.8, AA_L*0.08, 24);
-  const neg = new THREE.Mesh(negGeo, bodyMat);
-  neg.rotation.z = Math.PI/2;
-  neg.position.set(-AA_L/2 + AA_L*0.04, 0, 0);
-  g.add(neg);
-  g.position.set(x, battFloorY + BATT_D/2, z);
-  return g;
+// 2× AA batteries
+function createAABattery(x,z){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(AA_R,AA_R,AA_L,24),new THREE.MeshStandardMaterial({color:0xcccccc,metalness:0.7,roughness:0.25}));
+  body.rotation.z=Math.PI/2;g.add(body);
+  const cap=new THREE.Mesh(new THREE.CylinderGeometry(AA_R*0.7,AA_R,AA_L*0.1,24),new THREE.MeshStandardMaterial({color:0xd4a840,metalness:0.8,roughness:0.2}));
+  cap.rotation.z=Math.PI/2;cap.position.set(AA_L/2-AA_L*0.05,0,0);g.add(cap);
+  const neg=new THREE.Mesh(new THREE.CylinderGeometry(AA_R*0.55,AA_R*0.8,AA_L*0.08,24),new THREE.MeshStandardMaterial({color:0xcccccc,metalness:0.7,roughness:0.25}));
+  neg.rotation.z=Math.PI/2;neg.position.set(-AA_L/2+AA_L*0.04,0,0);g.add(neg);
+  g.position.set(x,battFloorY+BATT_D/2,z);return g;
 }
-const batt1 = createAABattery(0, -AA_R*1.25);
-const batt2 = createAABattery(0,  AA_R*1.25);
-battGroup.add(batt1); battGroup.add(batt2);
+battGroup.add(createAABattery(0,-AA_R*1.25));
+battGroup.add(createAABattery(0,AA_R*1.25));
 
-// "+" and "−" polarity markings inside compartment
-function makeBattMarking(text, x, z) {
-  const c = document.createElement('canvas'); c.width=128; c.height=64;
-  const ctx=c.getContext('2d'); ctx.fillStyle='#ffcc88'; ctx.font='bold 28px monospace';
-  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,64,32);
-  const tex = new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
-  sp.position.set(x, battFloorY + BATT_D + 0.04, z); sp.scale.set(0.8,0.4,1);
-  return sp;
+// +/- markings group (hidden by default, shown with dims)
+const battMarksGroup=new THREE.Group();battGroup.add(battMarksGroup);
+function makeBattMarking(text,x,z){
+  const c=document.createElement('canvas');c.width=128;c.height=64;
+  const ctx=c.getContext('2d');ctx.fillStyle='#ffcc88';ctx.font='bold 28px monospace';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,64,32);
+  const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
+  sp.position.set(x,battFloorY+BATT_D/2,z);sp.scale.set(0.45,0.23,1);return sp;
 }
-battGroup.add(makeBattMarking('+',  AA_L/2 + 0.25, -AA_R*1.25));
-battGroup.add(makeBattMarking('−', -AA_L/2 - 0.25, -AA_R*1.25));
-battGroup.add(makeBattMarking('+',  AA_L/2 + 0.25,  AA_R*1.25));
-battGroup.add(makeBattMarking('−', -AA_L/2 - 0.25,  AA_R*1.25));
+battMarksGroup.add(makeBattMarking('+',AA_L/2+0.15,-AA_R*1.25));
+battMarksGroup.add(makeBattMarking('−',-AA_L/2-0.15,-AA_R*1.25));
+battMarksGroup.add(makeBattMarking('+',AA_L/2+0.15,AA_R*1.25));
+battMarksGroup.add(makeBattMarking('−',-AA_L/2-0.15,AA_R*1.25));
+battMarksGroup.visible=false;
 
-// ═══════════════════════
-//  ROCKER SWITCH (船型开关) — 2 positions (0 / 1)
-//  Body: rectangular block. Rocker: curved top that tilts.
-// ═══════════════════════
-const switchGroup = new THREE.Group(); switchGroup.userData={isSwitch:true};
-switchGroup.position.set(BASE_L*0.25, BASE_H, BASE_W*0.28);
+// ═══════════════════════════
+//  ROCKER SWITCH (船型开关) — realistic design
+//  Body in panel, bezel on top, concave rocker with 0/1 printed on it
+// ═══════════════════════════
+const switchGroup=new THREE.Group();switchGroup.userData={isSwitch:true};
+switchGroup.position.set(BASE_L*0.25,BASE_H,BASE_W*0.28);
 baseGroup.add(switchGroup);
 
-// Switch body (sits flush on base top)
-const rswBodyGeo = new THREE.BoxGeometry(RSW_W, RSW_H, RSW_D);
-const rswBody = new THREE.Mesh(rswBodyGeo, new THREE.MeshStandardMaterial({color:0x3a3a3e, metalness:0.5, roughness:0.3}));
-rswBody.position.y = RSW_H/2; rswBody.castShadow=true;
-switchGroup.add(rswBody);
+// Switch body (below panel, mostly hidden)
+const rswBodyGeo=new THREE.BoxGeometry(RSW_W,RSW_H,RSW_D);
+const rswBody=new THREE.Mesh(rswBodyGeo,new THREE.MeshStandardMaterial({color:0x3a3a3e,metalness:0.5,roughness:0.3}));
+rswBody.position.y=RSW_H/2;rswBody.castShadow=true;switchGroup.add(rswBody);
 
-// Rocker — curved top, tilts around its center X axis
-const rockerPivot = new THREE.Group();
-rockerPivot.position.y = RSW_H;
+// Bezel frame (sits on top of base, surrounds the rocker)
+const bezelGeo=new THREE.BoxGeometry(RSW_W+0.18,RSW_BEZEL_H,RSW_D+0.18);
+const bezelMat=new THREE.MeshStandardMaterial({color:0x2a2a2e,metalness:0.6,roughness:0.25});
+const bezel=new THREE.Mesh(bezelGeo,bezelMat);
+bezel.position.y=RSW_H+RSW_BEZEL_H/2;switchGroup.add(bezel);
+
+// Bezel opening (dark inner rim)
+const bezelInnerGeo=new THREE.BoxGeometry(RSW_W*0.88,RSW_BEZEL_H+0.005,RSW_D*0.88);
+const bezelInner=new THREE.Mesh(bezelInnerGeo,new THREE.MeshStandardMaterial({color:0x111114,roughness:0.9}));
+bezelInner.position.y=RSW_H+RSW_BEZEL_H/2+0.005;switchGroup.add(bezelInner);
+
+// Rocker pivot group
+const rockerPivot=new THREE.Group();
+rockerPivot.position.y=RSW_H+RSW_BEZEL_H;
 switchGroup.add(rockerPivot);
 
-// Rocker body: a box with rounded top, built as a box + cylindrical cap
-const rockerBodyGeo = new THREE.BoxGeometry(RSW_W*0.85, RSW_ROCKER_H, RSW_D*0.85);
-const rockerMat = new THREE.MeshStandardMaterial({color:0x222226, metalness:0.4, roughness:0.35});
-const rockerBody = new THREE.Mesh(rockerBodyGeo, rockerMat);
-rockerBody.position.y = RSW_ROCKER_H/2; rockerBody.castShadow=true;
-rockerPivot.add(rockerBody);
+// Rocker actuator: a box with a curved (concave) top surface
+// Build the rocker as a box whose top we'll indent with a darker "dip" line
+const rockerW=RSW_W*0.82, rockerD=RSW_D*0.75, rockerH=RSW_ROCKER_H;
+const rockerGeo=new THREE.BoxGeometry(rockerW,rockerH,rockerD);
+// Enhance rocker: round the top edges slightly by adding a thin rounded slab on top
+const rockerMat=new THREE.MeshStandardMaterial({color:0x1e1e22,metalness:0.35,roughness:0.4});
+const rockerMesh=new THREE.Mesh(rockerGeo,rockerMat);
+rockerMesh.position.y=rockerH/2;rockerMesh.castShadow=true;
+rockerPivot.add(rockerMesh);
 
-// Curved rocker top (half-cylinder to give it the "boat" shape)
-const rockerCapGeo = new THREE.CylinderGeometry(RSW_D*0.35, RSW_D*0.35, RSW_W*0.8, 20);
-const rockerCap = new THREE.Mesh(rockerCapGeo, rockerMat);
-rockerCap.rotation.x = Math.PI/2;
-rockerCap.position.y = RSW_ROCKER_H;
-rockerPivot.add(rockerCap);
+// Concave dip line on rocker (center groove / valley line)
+// A thin dark cylinder "cut" across the middle to simulate the concave shape
+const dipGeo=new THREE.CylinderGeometry(rockerD*0.38,rockerD*0.38,rockerW*0.96,20);
+const dipMesh=new THREE.Mesh(dipGeo,new THREE.MeshStandardMaterial({color:0x141418,roughness:0.7,metalness:0.1}));
+dipMesh.rotation.x=Math.PI/2;dipMesh.position.y=rockerH;dipMesh.renderOrder=0;
+rockerPivot.add(dipMesh);
 
-// "0" and "1" markings on switch body (side labels)
-function makeSwitchLabel(text, x, y, z, size) {
-  const c = document.createElement('canvas'); c.width=64; c.height=64;
-  const ctx=c.getContext('2d'); ctx.fillStyle='#aaaaaa'; ctx.font='bold 36px "Segoe UI",sans-serif';
-  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,32,32);
-  const tex = new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
-  sp.position.set(x, y, z); sp.scale.set(size||0.3, size||0.3, 1);
-  return sp;
+// CENTER line indicator (white marking at pivot center)
+const ctrGeo=new THREE.BoxGeometry(rockerW*0.08,0.015,rockerD*0.6);
+const ctrLine=new THREE.Mesh(ctrGeo,new THREE.MeshStandardMaterial({color:0x555555,roughness:0.3}));
+ctrLine.position.y=rockerH+0.008;rockerPivot.add(ctrLine);
+
+// "0" and "1" printed ON the rocker top surface
+// Each is a textured plane flush on the rocker top
+function makeRockerLabel(text,x){
+  const c=document.createElement('canvas');c.width=128;c.height=128;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#ffffff';ctx.font='bold 52px "Segoe UI","PingFang SC",sans-serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,64,64);
+  const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;
+  const plane=new THREE.Mesh(
+    new THREE.PlaneGeometry(rockerW*0.28,rockerD*0.45),
+    new THREE.MeshBasicMaterial({map:tex,transparent:true,depthTest:true,depthWrite:true,side:THREE.DoubleSide})
+  );
+  plane.rotation.x=-Math.PI/2;
+  plane.position.set(x,rockerH+0.02,0);
+  return plane;
 }
-switchGroup.add(makeSwitchLabel('0', -RSW_W*0.32, RSW_H+RSW_ROCKER_H+0.15, RSW_D*0.55, 0.25));
-switchGroup.add(makeSwitchLabel('1',  RSW_W*0.32, RSW_H+RSW_ROCKER_H+0.15, RSW_D*0.55, 0.25));
+const label0=makeRockerLabel('0',-rockerW*0.24);
+const label1=makeRockerLabel('1',rockerW*0.24);
+rockerPivot.add(label0);rockerPivot.add(label1);
 
-// Indicator line on rocker (shows which side is pressed)
-const indicatorGeo = new THREE.BoxGeometry(RSW_W*0.15, 0.01, RSW_D*0.4);
-const indicatorMat = new THREE.MeshStandardMaterial({color:0xffffff, emissive:0xffffff, emissiveIntensity:0.6, roughness:0.3});
-const indicatorLine = new THREE.Mesh(indicatorGeo, indicatorMat);
-indicatorLine.position.y = RSW_ROCKER_H + RSW_D*0.35 + 0.02;
-rockerPivot.add(indicatorLine);
-
-// ═══════════════════════
-//  DASHED LINES (exploded view)
-// ═══════════════════════
-const dashGroup = new THREE.Group(); coreGroup.add(dashGroup);
+// ═══════════════════════════
+//  DASHED LINES (exploded)
+// ═══════════════════════════
+const dashGroup=new THREE.Group();coreGroup.add(dashGroup);
 function makeDash(y1,y2){const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,y1,0),new THREE.Vector3(0,y2,0)]);const l=new THREE.Line(geo,new THREE.LineDashedMaterial({color:0x667799,dashSize:0.2,gapSize:0.14,transparent:true,opacity:0.5}));l.computeLineDistances();return l;}
 function updateDashLines(show){while(dashGroup.children.length>0)dashGroup.remove(dashGroup.children[0]);if(!show)return;for(let i=0;i<layerMeshes.length-1;i++){const a=layerMeshes[i],b=layerMeshes[i+1];const y1=a.position.y+layers[i].thickness/2,y2=b.position.y-layers[i+1].thickness/2,ox=GLASS_SIDE*0.42,oz=GLASS_SIDE*0.35;[1,-1].forEach(s=>{const l=makeDash(y1,y2);l.position.set(s*ox,0,s*oz);dashGroup.add(l);});}}
 
-// ═══════════════════════
-//  LABELS (exploded view)
-// ═══════════════════════
+// ═══════════════════════════
+//  LABELS (exploded)
+// ═══════════════════════════
 const labelSprites=[];
 function makeLabelSprite(text,pos){const c=document.createElement('canvas');c.width=512;c.height=96;const ctx=c.getContext('2d');ctx.fillStyle='rgba(10,10,24,0.85)';ctx.beginPath();ctx.roundRect(30,15,452,66,18);ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(30,15,452,66,18);ctx.stroke();ctx.fillStyle='#fff';ctx.font='bold 28px "PingFang SC","Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,256,48);const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));sp.position.copy(pos);sp.scale.set(2.4,0.45,1);return sp;}
 function updateLabels(show){labelSprites.forEach(s=>coreGroup.remove(s));labelSprites.length=0;if(!show)return;layerMeshes.forEach((m,i)=>{const sp=makeLabelSprite(layers[i].name,new THREE.Vector3(GLASS_SIDE/2+1.1,m.position.y,0));sp.userData={layerIndex:i};coreGroup.add(sp);labelSprites.push(sp);});}
 
-// ═══════════════════════
-//  DIMENSION ANNOTATIONS (toggleable)
-// ═══════════════════════
-const dimLines=[]; const dimSprites=[];
-function makeDimText(text,position){const c=document.createElement('canvas');c.width=256;c.height=64;const ctx=c.getContext('2d');ctx.fillStyle='#ffcc88';ctx.font='bold 26px "PingFang SC","Segoe UI",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,128,32);const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));sp.position.copy(position);sp.scale.set(1.5,0.375,1);return sp;}
+// ═══════════════════════════
+//  DIMENSION ANNOTATIONS
+// ═══════════════════════════
+const dimLines=[];const dimSprites=[];
+function makeDimText(text,position,sz){const c=document.createElement('canvas');c.width=256;c.height=64;const ctx=c.getContext('2d');ctx.fillStyle='#ffcc88';ctx.font='bold 26px "PingFang SC","Segoe UI",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,128,32);const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));sp.position.copy(position);sp.scale.set(sz||1.5,(sz||1.5)*0.25,1);return sp;}
 function makeDimLine(x1,y1,z1,x2,y2,z2){return new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1,y1,z1),new THREE.Vector3(x2,y2,z2)]),new THREE.LineBasicMaterial({color:0xffcc88,transparent:true,opacity:0.7,depthTest:true}));}
 function clearAnnotations(){dimLines.forEach(l=>annotGroup.remove(l));dimLines.length=0;dimSprites.forEach(s=>annotGroup.remove(s));dimSprites.length=0;}
 
-function buildAnnotations() {
+function buildAnnotations(){
   clearAnnotations();
-  if(!showAnnotations) return; // ← only show when toggled on
+  // Show/hide battery markings in sync with annotations
+  battMarksGroup.visible=showAnnotations;
 
-  const fb=-FRAME_OUTER/2, ft=FRAME_OUTER/2, fl=-FRAME_OUTER/2, fr=FRAME_OUTER/2;
-  const gb=-GLASS_SIDE/2, gt=GLASS_SIDE/2, gl=-GLASS_SIDE/2;
-  const baseTop = fb - 0.06;
-  const baseBot = baseTop - BASE_H;
-  const baseL=-BASE_L/2, baseR=BASE_L/2, baseFr=BASE_W/2, baseBk=-BASE_W/2;
+  if(!showAnnotations)return;
+
+  const fb=-FRAME_OUTER/2,ft=FRAME_OUTER/2,fl=-FRAME_OUTER/2,fr=FRAME_OUTER/2;
+  const gb=-GLASS_SIDE/2,gt=GLASS_SIDE/2,gl=-GLASS_SIDE/2;
+  const baseTop=fb-0.06,baseBot=baseTop-BASE_H;
+  const baseL2=-BASE_L/2,baseR2=BASE_L/2,baseFr=BASE_W/2,baseBk=-BASE_W/2;
+
+  // Batt compartment Y in world space — at base bottom
+  const battWCtr = baseBot + battFloorY + BATT_D/2; // center of compartment in world Y
 
   function dim(x1,y1,z1,x2,y2,z2,text,tx,ty,tz){
     const l=makeDimLine(x1,y1,z1,x2,y2,z2);annotGroup.add(l);dimLines.push(l);
-    const tickLen=0.15;const dx=x2-x1,dy=y2-y1,dz=z2-z1;const len=Math.sqrt(dx*dx+dy*dy+dz*dz);const nx=dx/len,ny=dy/len,nz=dz/len;const px=-ny,py=nx;
+    const tickLen=0.15;const dx=x2-x1,dy=y2-y1,dz=z2-z1;const len=Math.sqrt(dx*dx+dy*dy+dz*dz);const nx=dx/len,ny=dy/len;const px=-ny,py=nx;
     [0,1].forEach(s=>{const px3=s?x2:x1,py3=s?y2:y1,pz3=s?z2:z1;const tLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(px3-px*tickLen,py3-py*tickLen,pz3),new THREE.Vector3(px3+px*tickLen,py3+py*tickLen,pz3)]),new THREE.LineBasicMaterial({color:0xffcc88,transparent:true,opacity:0.7,depthTest:true}));annotGroup.add(tLine);dimLines.push(tLine);});
-    const sp=makeDimText(text,new THREE.Vector3(tx||((x1+x2)/2),ty||((y1+y2)/2),tz||((z1+z2)/2)));annotGroup.add(sp);dimSprites.push(sp);
+    const sp=makeDimText(text,new THREE.Vector3(tx||((x1+x2)/2),ty||((y1+y2)/2),tz||((z1+z2)/2)),1.2);annotGroup.add(sp);dimSprites.push(sp);
   }
 
   // Glass 10×10
@@ -401,134 +372,93 @@ function buildAnnotations() {
   // Frame 11 cm
   dim(fl,fb-0.4,0.03,fr,fb-0.4,0.03,'11 cm (外框)');
   // Base 15×6
-  dim(baseL,baseBot-0.15,baseFr+0.1,baseR,baseBot-0.15,baseFr+0.1,'15 cm');
-  dim(baseR+0.2,baseBot,baseBk,baseR+0.2,baseBot,baseFr,'6 cm');
-  // Battery compartment label
-  const battY2 = 0 + 0.08; // base bottom is at y=0 in world when baseGroup positioned
-  const spBat=makeDimText('电池槽 6.5×5 cm',new THREE.Vector3(0,battY2,0));
-  spBat.scale.set(2.0,0.5,1);annotGroup.add(spBat);dimSprites.push(spBat);
-  // AA labels
-  const aay2=battFloorY+BATT_D/2;
-  [-AA_R*1.25,AA_R*1.25].forEach(bz=>{const spAA=makeDimText('AA 1.5V',new THREE.Vector3(0,aay2,bz));spAA.scale.set(1.0,0.25,1);annotGroup.add(spAA);dimSprites.push(spAA);});
+  dim(baseL2,baseBot-0.15,baseFr+0.1,baseR2,baseBot-0.15,baseFr+0.1,'15 cm');
+  dim(baseR2+0.2,baseBot,baseBk,baseR2+0.2,baseBot,baseFr,'6 cm');
+
+  // ── Battery compartment annotations — placed RIGHT AT the compartment ──
+
+  // Batt width dim (5 cm) — along Z, just below base bottom
+  dim(0,baseBot-0.06,-BATT_W/2, 0,baseBot-0.06,BATT_W/2, '5 cm');
+
+  // Batt length dim (6.5 cm) — along X, just below base bottom+offset
+  dim(-BATT_L/2,baseBot-0.22,BATT_W/2+0.15, BATT_L/2,baseBot-0.22,BATT_W/2+0.15, '6.5 cm');
+
+  // "电池槽" label — right at batt compartment bottom center
+  const spBat=makeDimText('电池槽',new THREE.Vector3(0,baseBot-0.35,0),1.4);
+  spBat.scale.set(1.2,0.3,1);annotGroup.add(spBat);dimSprites.push(spBat);
+
+  // AA 1.5V labels — at each battery position
+  const aay=battFloorY+baseBot;
+  [-AA_R*1.25,AA_R*1.25].forEach(bz=>{
+    const spAA=makeDimText('AA 1.5V',new THREE.Vector3(0,aay-0.08,bz),0.8);
+    annotGroup.add(spAA);dimSprites.push(spAA);
+  });
 }
 
-// ═══════════════════════
+// ═══════════════════════════
 //  LAYOUT
-// ═══════════════════════
+// ═══════════════════════════
 let currentView='exploded';
-let switchOn=false;         // rocker position: false=0档(透明), true=1档(着色)
-let showAnnotations=false;  // dimension toggle
+let switchOn=false;
+let showAnnotations=false;
 
 function layoutExploded(){
-  const gap=0.8;
-  const totalH=layers.reduce((s,l)=>s+l.thickness,0)+(layers.length-1)*gap;
+  const gap=0.8,totalH=layers.reduce((s,l)=>s+l.thickness,0)+(layers.length-1)*gap;
   let y=totalH/2;
   for(let i=0;i<layerMeshes.length;i++){y-=layers[i].thickness/2;layerMeshes[i].position.y=y;layerMeshes[i].rotation.x=0;y-=layers[i].thickness/2+gap;}
   coreGroup.rotation.x=0;coreGroup.position.set(0,0,0);
   frameGroup.visible=false;baseGroup.visible=false;clearAnnotations();
   document.getElementById('switch-label-bar').classList.remove('visible');
   updateDashLines(true);updateLabels(true);
-  // Disable dims button in exploded view
-  const dimBtn=document.getElementById('btn-dims');
-  dimBtn.style.opacity='0.4';dimBtn.style.pointerEvents='none';
+  // Base opaque in exploded (hidden anyway)
+  baseBodyMat.opacity=1;plateMat2.opacity=1;
+  const dimBtn=document.getElementById('btn-dims');dimBtn.style.opacity='0.4';dimBtn.style.pointerEvents='none';
 }
 
 function layoutStacked(){
-  let y=0;
-  for(let i=0;i<layerMeshes.length;i++){y+=layers[i].thickness/2;layerMeshes[i].position.y=y;layerMeshes[i].rotation.x=0;y+=layers[i].thickness/2;}
+  let y=0;for(let i=0;i<layerMeshes.length;i++){y+=layers[i].thickness/2;layerMeshes[i].position.y=y;layerMeshes[i].rotation.x=0;y+=layers[i].thickness/2;}
   const totalH=layers.reduce((s,l)=>s+l.thickness,0);
   for(let i=0;i<layerMeshes.length;i++)layerMeshes[i].position.y-=totalH/2;
   coreGroup.rotation.x=-Math.PI/2;coreGroup.position.set(0,0,0);
-  // Base below frame
-  baseGroup.position.set(0,-FRAME_OUTER/2-BASE_H/2-0.06,0);
-  baseGroup.rotation.set(0,0,0);baseGroup.visible=true;
+  baseGroup.position.set(0,-FRAME_OUTER/2-BASE_H/2-0.06,0);baseGroup.rotation.set(0,0,0);baseGroup.visible=true;
   frameGroup.visible=true;
+  // X-ray base: semi-transparent
+  baseBodyMat.opacity=0.28;plateMat2.opacity=0.35;
   updateDashLines(false);updateLabels(false);
   buildAnnotations();updateSwitchUI();
-  // Enable dims button
-  const dimBtn=document.getElementById('btn-dims');
-  dimBtn.style.opacity='1';dimBtn.style.pointerEvents='auto';
-  dimBtn.classList.toggle('active',showAnnotations);
+  const dimBtn=document.getElementById('btn-dims');dimBtn.style.opacity='1';dimBtn.style.pointerEvents='auto';dimBtn.classList.toggle('active',showAnnotations);
 }
 
-function setView(view){
-  currentView=view;
-  document.getElementById('btn-exploded').classList.toggle('active',view==='exploded');
-  document.getElementById('btn-stacked').classList.toggle('active',view==='stacked');
-  if(view==='exploded')layoutExploded();else layoutStacked();
-  closeDetail();
-}
+function setView(view){currentView=view;document.getElementById('btn-exploded').classList.toggle('active',view==='exploded');document.getElementById('btn-stacked').classList.toggle('active',view==='stacked');if(view==='exploded')layoutExploded();else layoutStacked();closeDetail();}
 
-// ═══════════════════════
+// ═══════════════════════════
 //  DIMENSION TOGGLE
-// ═══════════════════════
-function toggleDims(){
-  if(currentView!=='stacked')return;
-  showAnnotations=!showAnnotations;
-  document.getElementById('btn-dims').classList.toggle('active',showAnnotations);
-  buildAnnotations();
-}
+// ═══════════════════════════
+function toggleDims(){if(currentView!=='stacked')return;showAnnotations=!showAnnotations;document.getElementById('btn-dims').classList.toggle('active',showAnnotations);buildAnnotations();}
 
-// ═══════════════════════
-//  ROCKER SWITCH — 0档(透明) / 1档(着色)
-// ═══════════════════════
-function toggleSwitch(){
-  switchOn=!switchOn;
-  applyGelColor();
-  updateRockerVisual();
-  updateSwitchUI();
-  const btn=document.getElementById('btn-switch');
-  btn.classList.toggle('active',switchOn);
-  btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';
-}
+// ═══════════════════════════
+//  ROCKER SWITCH
+// ═══════════════════════════
+function toggleSwitch(){switchOn=!switchOn;applyGelColor();updateRockerVisual();updateSwitchUI();const btn=document.getElementById('btn-switch');btn.classList.toggle('active',switchOn);btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';}
+function applyGelColor(){const gel=layerMeshes[1];const d=layers[1];if(switchOn){gel.material.color.set(d.colorOn);gel.material.opacity=0.82;gel.material.emissive=new THREE.Color(d.colorOn);gel.material.emissiveIntensity=0.3;}else{gel.material.color.set(d.color);gel.material.opacity=d.opacity;gel.material.emissive=new THREE.Color(0x000000);gel.material.emissiveIntensity=0;}}
+function updateRockerVisual(){rockerPivot.rotation.z=switchOn?-0.25:0.25;}
+function updateSwitchUI(){const bar=document.getElementById('switch-label-bar');if(currentView==='stacked'){bar.classList.add('visible');document.getElementById('status-dot').style.background=switchOn?'#9b7fd4':'#666';document.getElementById('status-dot').style.boxShadow=switchOn?'0 0 10px #9b7fd4':'0 0 4px #666';document.getElementById('status-text').textContent=switchOn?'凝胶层：紫罗兰色 (1 档 — 着色态)':'凝胶层：透明 (0 档 — 褪色态)';}else{bar.classList.remove('visible');}}
 
-function applyGelColor(){
-  const gel=layerMeshes[1];
-  const d=layers[1];
-  if(switchOn){gel.material.color.set(d.colorOn);gel.material.opacity=0.82;gel.material.emissive=new THREE.Color(d.colorOn);gel.material.emissiveIntensity=0.3;}
-  else{gel.material.color.set(d.color);gel.material.opacity=d.opacity;gel.material.emissive=new THREE.Color(0x000000);gel.material.emissiveIntensity=0;}
-}
-
-// Rocker visual: tilt the rocker forward/backward
-function updateRockerVisual(){
-  // 0档: rocker tilted so left side down, right side up  (rotation around X)
-  // 1档: rocker tilted so left side up, right side down
-  rockerPivot.rotation.z = switchOn ? -0.22 : 0.22;
-}
-
-function updateSwitchUI(){
-  const bar=document.getElementById('switch-label-bar');
-  if(currentView==='stacked'){
-    bar.classList.add('visible');
-    document.getElementById('status-dot').style.background=switchOn?'#9b7fd4':'#666';
-    document.getElementById('status-dot').style.boxShadow=switchOn?'0 0 10px #9b7fd4':'0 0 4px #666';
-    document.getElementById('status-text').textContent=switchOn?'凝胶层：紫罗兰色 (1 档 — 着色态)':'凝胶层：透明 (0 档 — 褪色态)';
-  }else{bar.classList.remove('visible');}
-}
-
-// ═══════════════════════
-//  ORBIT CONTROLS — no auto-rotate
-// ═══════════════════════
+// ═══════════════════════════
+//  ORBIT CONTROLS
+// ═══════════════════════════
 const controls=new OrbitControls(camera,renderer.domElement);
 controls.enableDamping=true;controls.dampingFactor=0.08;
 controls.target.set(0,-0.5,0);controls.minDistance=5;controls.maxDistance=30;
 controls.maxPolarAngle=Math.PI*0.78;controls.minPolarAngle=Math.PI*0.12;
 controls.autoRotate=false;controls.update();
+const stackedCamPos=new THREE.Vector3(0,0.2,16),stackedCamTgt=new THREE.Vector3(0,-0.8,0);
+const explodedCamPos=new THREE.Vector3(5,6,12),explodedCamTgt=new THREE.Vector3(0,0,0);
+function resetCamera(){if(currentView==='stacked'){camera.position.copy(stackedCamPos);controls.target.copy(stackedCamTgt);}else{camera.position.copy(explodedCamPos);controls.target.copy(explodedCamTgt);}controls.update();}
 
-const stackedCamPos=new THREE.Vector3(0,0.2,16);
-const stackedCamTgt=new THREE.Vector3(0,-0.8,0);
-const explodedCamPos=new THREE.Vector3(5,6,12);
-const explodedCamTgt=new THREE.Vector3(0,0,0);
-
-function resetCamera(){
-  if(currentView==='stacked'){camera.position.copy(stackedCamPos);controls.target.copy(stackedCamTgt);}
-  else{camera.position.copy(explodedCamPos);controls.target.copy(explodedCamTgt);}
-  controls.update();
-}
-
-// ═══════════════════════
+// ═══════════════════════════
 //  RAYCASTER
-// ═══════════════════════
+// ═══════════════════════════
 const raycaster=new THREE.Raycaster();const mouse=new THREE.Vector2();
 let hoveredLayer=null,selectedLayer=null;
 function getIntersections(ev){mouse.x=(ev.clientX/container.clientWidth)*2-1;mouse.y=-(ev.clientY/container.clientHeight)*2+1;raycaster.setFromCamera(mouse,camera);return raycaster.intersectObjects([...layerMeshes,switchGroup],true);}
@@ -541,16 +471,12 @@ function selectLayer(mesh){const idx=mesh.userData.layerIndex,layer=layers[idx];
 function closeDetail(){document.getElementById('detail-popup').classList.remove('visible');if(selectedLayer){resetHighlight();selectedLayer=null;}updateLegendHighlight(null);}
 function animateCam(to,look){const sp=camera.position.clone(),sl=controls.target.clone(),st=performance.now(),dur=800;function step(t){const e=Math.min((t-st)/dur,1),ease=e<.5?2*e*e:-1+(4-2*e)*e;camera.position.lerpVectors(sp,to,ease);controls.target.lerpVectors(sl,look,ease);controls.update();if(e<1)requestAnimationFrame(step);}requestAnimationFrame(step);}
 
-// ═══════════════════════
-//  LEGEND
-// ═══════════════════════
+// LEGEND
 const legendEl=document.getElementById('legend');
 layers.forEach((layer,i)=>{const it=document.createElement('div');it.className='legend-item';it.dataset.index=i;it.innerHTML=`<span class="legend-num">${layer.num}</span><span class="legend-swatch" style="background:#${new THREE.Color(layer.color).getHexString()};opacity:.8"></span><span>${layer.shortName}</span>`;it.addEventListener('click',()=>selectLayer(layerMeshes[i]));it.addEventListener('mouseenter',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();highlightLayer(layerMeshes[i],true);hoveredLayer=layerMeshes[i];container.classList.add('pointer');}});it.addEventListener('mouseleave',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();hoveredLayer=null;container.classList.remove('pointer');}});legendEl.appendChild(it);});
 function updateLegendHighlight(idx){Array.from(legendEl.querySelectorAll('.legend-item')).forEach((el,i)=>el.classList.toggle('highlight',i===idx));}
 
-// ═══════════════════════
-//  RENDER LOOP
-// ═══════════════════════
+// RENDER LOOP
 const clock=new THREE.Clock();
 function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();controls.update();if(selectedLayer){const p=1+Math.sin(performance.now()*0.005)*0.015;selectedLayer.scale.set(p,1,p);}pts.rotation.y+=dt*0.03;pts.rotation.x+=dt*0.015;renderer.render(scene,camera);}
 
@@ -563,11 +489,8 @@ layoutExploded();
 setTimeout(()=>{document.getElementById('hint').style.opacity='0';setTimeout(()=>document.getElementById('hint').remove(),1000);},12000);
 animate();
 
-// Expose
 window.setView=setView;window.resetCamera=resetCamera;window.toggleSwitch=toggleSwitch;window.toggleDims=toggleDims;window.closeDetail=closeDetail;
-
-console.log('🔬 电致变色器件 3D 模型已就绪');
-console.log('  ⌨ E=分解 S=堆叠 D=尺寸标注 A=开关变色 1-3=层 R=重置');
+console.log('🔬 ECD 3D 就绪 | E=分解 S=堆叠 D=标注 A=变色');
 </script>
 </body>
 </html>
