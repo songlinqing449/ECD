@@ -167,7 +167,6 @@ const annotGroup=new THREE.Group();world.add(annotGroup);
 
 // ── Core layers ──
 const layerMeshes=[];
-const gelParticles=[]; // internal scatter particles for gel layer
 
 layers.forEach((layer,idx)=>{
   const isGel=layer.isGel;
@@ -185,23 +184,6 @@ layers.forEach((layer,idx)=>{
   mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:isGel?0.04:0.1,depthTest:true})));
   layerMeshes.push(mesh);coreGroup.add(mesh);
 
-  // Gel layer: add internal scattering particles to simulate realistic gel texture
-  if(isGel){
-    const hw=GLASS_SIDE/2-0.06, hh=layer.thickness/2-0.02;
-    for(let pi=0;pi<80;pi++){
-      const pr=(Math.random()*0.03+0.01);
-      const pGeo2=new THREE.SphereGeometry(pr,4,4);
-      const pMat2=new THREE.MeshPhysicalMaterial({
-        color:0xffffff,metalness:0,roughness:0.8,transparent:true,opacity:0.35,
-        envMapIntensity:0,clearcoat:0,specularIntensity:0
-      });
-      const particle=new THREE.Mesh(pGeo2,pMat2);
-      particle.position.set((Math.random()-0.5)*2*hw*0.85,(Math.random()-0.5)*2*hh*0.7,(Math.random()-0.5)*2*hw*0.85);
-      particle.userData={isGelParticle:true};
-      mesh.add(particle);
-      gelParticles.push({mesh:particle,baseOpacity:0.35});
-    }
-  }
 });
 
 // ── Resin Frame ──
@@ -438,35 +420,19 @@ function toggleSwitch(){switchOn=!switchOn;applyGelColor();updateToggleVisual();
 function applyGelColor(){
   const gel=layerMeshes[1];const d=layers[1];
   if(switchOn){
-    // Violet-tinted gel
     gel.material.color.set(d.colorOn);
     gel.material.opacity=0.78;
     gel.material.emissive=new THREE.Color(d.colorOn);
     gel.material.emissiveIntensity=0.35;
     gel.material.attenuationColor=new THREE.Color(d.colorOn);
     gel.material.attenuationDistance=0.5;
-    // Tint internal particles violet
-    gel.traverse(c=>{
-      if(c.userData&&c.userData.isGelParticle){
-        c.material.color.set(d.colorOn);
-        c.material.opacity=0.5;
-      }
-    });
   }else{
-    // Clear/translucent gel
     gel.material.color.set(d.color);
     gel.material.opacity=d.opacity;
     gel.material.emissive=new THREE.Color(0x000000);
     gel.material.emissiveIntensity=0;
     gel.material.attenuationColor=new THREE.Color(0xe8dfd0);
     gel.material.attenuationDistance=0.8;
-    // Restore internal particles to clear
-    gel.traverse(c=>{
-      if(c.userData&&c.userData.isGelParticle){
-        c.material.color.set(0xffffff);
-        c.material.opacity=0.35;
-      }
-    });
   }
 }
 function updateToggleVisual(){togglePivot.rotation.x=switchOn?-0.55:0.55;if(switchOn)ledDot.material=ledOnMat2.clone();else ledDot.material=ledOffMat2.clone();}
