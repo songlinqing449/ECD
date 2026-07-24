@@ -194,24 +194,33 @@ addFrameBar(FRAME_BAR,DEVICE_THICK,GLASS_SIDE,-fbx,0,0);
 // ═══════════════════════════
 //  BASE — default OPAQUE
 // ═══════════════════════════
+// X-ray render order: batt contents=0, base shell=1, outlines=2
 const baseBodyGeo=new THREE.BoxGeometry(BASE_L,BASE_H,BASE_W,1,1,1);
 const baseBodyMat=new THREE.MeshStandardMaterial({color:0x1c1c1e,metalness:0.06,roughness:0.68});
 const baseBody=new THREE.Mesh(baseBodyGeo,baseBodyMat);
 baseBody.castShadow=true;baseBody.receiveShadow=true;baseBody.userData={isBase:true};
-baseBody.position.y=BASE_H/2;
+baseBody.position.y=BASE_H/2;baseBody.renderOrder=1;
 baseGroup.add(baseBody);
 
 // Base top plate
 const plateGeo=new THREE.BoxGeometry(BASE_L-0.3,0.08,BASE_W-0.3,1,1,1);
 const plateMat2=new THREE.MeshStandardMaterial({color:0x242426,metalness:0.12,roughness:0.5});
 const plate=new THREE.Mesh(plateGeo,plateMat2);
-plate.position.y=BASE_H/2+0.04;plate.receiveShadow=true;
+plate.position.y=BASE_H/2+0.04;plate.receiveShadow=true;plate.renderOrder=1;
 baseGroup.add(plate);
+
+// Base wireframe outline (always visible for shape readability)
+const baseEdgeGeo2=new THREE.EdgesGeometry(baseBodyGeo);
+const baseEdge2=new THREE.LineSegments(baseEdgeGeo2,new THREE.LineBasicMaterial({color:0x555566,transparent:true,opacity:0.55,depthTest:false,depthWrite:false}));
+baseEdge2.position.y=BASE_H/2;baseEdge2.renderOrder=2;
+baseGroup.add(baseEdge2);
 
 // ═══════════════════════════
 //  BATTERY COMPARTMENT — redesigned, clean
 // ═══════════════════════════
 const battGroup=new THREE.Group();baseGroup.add(battGroup);
+// All batt contents must render BEFORE the base shell (renderOrder 0 < 1)
+function tagBattMesh(obj){obj.renderOrder=0;obj.traverse?.(c=>{c.renderOrder=0;});}
 const battFloorY=0.04;
 
 // Compartment outer shell (dark grey box with defined edges)
@@ -292,6 +301,9 @@ battMarksGroup.add(makeBattMarking('−',-AA_L*0.39-0.2,-AA_R*1.25));
 battMarksGroup.add(makeBattMarking('+',AA_L*0.39+0.2,AA_R*1.25));
 battMarksGroup.add(makeBattMarking('−',-AA_L*0.39-0.2,AA_R*1.25));
 battMarksGroup.visible=false;
+
+// Tag all battery compartment meshes with renderOrder 0 (render before base shell)
+battGroup.traverse(c=>{if(c.isMesh||c.isLineSegments){c.renderOrder=0;c.material.depthTest=true;c.material.depthWrite=true;}});
 
 // ═══════════════════════════
 //  TOGGLE SWITCH — original design (cylindrical + lever + ball tip)
@@ -417,20 +429,27 @@ let showXray=false;
 
 function applyBaseOpacity(){
   if(currentView==='stacked' && showXray){
+    // X-ray: base body semi-transparent, depthWrite OFF so batteries show through
     baseBody.material.transparent=true;
     baseBody.material.opacity=0.28;
-    baseBody.material.depthWrite=true;
+    baseBody.material.depthWrite=false;
     plate.material.transparent=true;
     plate.material.opacity=0.35;
-    plate.material.depthWrite=true;
+    plate.material.depthWrite=false;
+    baseEdge2.visible=true;
   } else {
+    // Default: solid opaque base
     baseBody.material.transparent=false;
     baseBody.material.opacity=1;
     baseBody.material.depthWrite=true;
     plate.material.transparent=false;
     plate.material.opacity=1;
     plate.material.depthWrite=true;
+    baseEdge2.visible=false;
   }
+  // Ensure render order stays correct
+  baseBody.renderOrder=1; plate.renderOrder=1;
+  baseEdge2.renderOrder=2;
 }
 
 function layoutExploded(){
