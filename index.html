@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>电致变色器件 (ECD) - 交互式3D模型</title>
 <style>
-  :root{--bg:#0a0a14;--panel-bg:rgba(16,16,30,0.95);--text:#e0e0e0;--accent:#4da6ff;--violet:#9b7fd4;--gold:#f0c060;--teal:#4dc9a0;--border:rgba(255,255,255,.1)}
+  :root{--bg:#0a0a14;--panel-bg:rgba(16,16,30,0.95);--text:#e0e0e0;--accent:#4da6ff;--violet:#9b7fd4;--gold:#f0c060;--border:rgba(255,255,255,.1)}
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:var(--bg);font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;overflow:hidden;height:100vh;width:100vw;user-select:none;-webkit-user-select:none}
   #canvas-container{position:fixed;inset:0;cursor:grab}
@@ -25,9 +25,6 @@
   .btn.dim-btn{background:rgba(240,192,96,.15);border-color:var(--gold);color:var(--gold)}
   .btn.dim-btn:hover{background:rgba(240,192,96,.28);box-shadow:0 0 20px rgba(240,192,96,.25)}
   .btn.dim-btn.active{background:rgba(240,192,96,.3);box-shadow:0 0 20px rgba(240,192,96,.4)}
-  .btn.xray-btn{background:rgba(77,201,160,.15);border-color:var(--teal);color:var(--teal)}
-  .btn.xray-btn:hover{background:rgba(77,201,160,.28);box-shadow:0 0 20px rgba(77,201,160,.25)}
-  .btn.xray-btn.active{background:rgba(77,201,160,.3);box-shadow:0 0 20px rgba(77,201,160,.4)}
   #legend{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:10;background:var(--panel-bg);border:1px solid var(--border);border-radius:16px;padding:20px;backdrop-filter:blur(16px);display:flex;flex-direction:column;gap:6px;min-width:220px}
   #legend h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.5);margin-bottom:6px}
   .legend-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;cursor:pointer;transition:all .2s;font-size:.82rem;color:#bbb;border:1px solid transparent}
@@ -35,6 +32,13 @@
   .legend-item.highlight{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff;box-shadow:0 0 12px rgba(0,0,0,.3)}
   .legend-swatch{width:28px;height:14px;border-radius:3px;flex-shrink:0}
   .legend-num{font-size:.65rem;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.1);color:#888;flex-shrink:0}
+
+  /* ── Shortcuts panel (right edge, below legend) ── */
+  #shortcuts{position:fixed;right:16px;top:calc(50% + 220px);z-index:10;background:var(--panel-bg);border:1px solid var(--border);border-radius:16px;padding:18px 20px;backdrop-filter:blur(16px);min-width:220px}
+  #shortcuts h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.42);margin-bottom:10px}
+  .shortcut-row{display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:.78rem;color:#999;gap:12px}
+  .shortcut-key{display:inline-block;padding:2px 8px;border-radius:5px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#ddd;font-family:'SF Mono','Fira Code','Consolas',monospace;font-size:.72rem;min-width:28px;text-align:center}
+
   #detail-popup{position:fixed;left:50%;bottom:40px;z-index:20;background:var(--panel-bg);border:1px solid var(--border);border-radius:20px;padding:24px 32px;backdrop-filter:blur(20px);max-width:560px;width:90%;opacity:0;pointer-events:none;transition:opacity .35s,transform .35s;transform:translateX(-50%) translateY(20px)}
   #detail-popup.visible{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
   #detail-popup .close-btn{position:absolute;top:10px;right:16px;background:0;border:0;color:#888;cursor:pointer;font-size:1.2rem;padding:4px 8px;border-radius:50%}
@@ -46,7 +50,7 @@
   #switch-label-bar{position:fixed;left:50%;bottom:130px;transform:translateX(-50%);z-index:15;padding:8px 20px;border-radius:20px;background:var(--panel-bg);border:1px solid var(--border);backdrop-filter:blur(12px);font-size:.82rem;color:#aaa;pointer-events:none;opacity:0;transition:opacity .4s}
   #switch-label-bar.visible{opacity:1}
   #hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.35);font-size:.75rem;z-index:5;pointer-events:none;transition:opacity 1s}
-  @media(max-width:768px){#legend{right:4px;padding:12px;gap:2px;min-width:160px;border-radius:12px}.legend-item{padding:6px 8px;font-size:.7rem;gap:6px}.legend-swatch{width:20px;height:10px}#title{font-size:1.1rem}.btn{padding:8px 14px;font-size:.75rem}#title-bar{padding:10px 12px}}
+  @media(max-width:768px){#legend{right:4px;padding:12px;gap:2px;min-width:160px;border-radius:12px}.legend-item{padding:6px 8px;font-size:.7rem;gap:6px}.legend-swatch{width:20px;height:10px}#title{font-size:1.1rem}.btn{padding:8px 14px;font-size:.75rem}#title-bar{padding:10px 12px}#shortcuts{right:4px;top:auto;bottom:80px;min-width:160px;padding:12px}}
 </style>
 </head>
 <body>
@@ -57,12 +61,14 @@
     <button class="btn active" id="btn-exploded" onclick="window.setView('exploded')">💥 分解视图</button>
     <button class="btn" id="btn-stacked" onclick="window.setView('stacked')">📐 堆叠视图</button>
     <button class="btn dim-btn" id="btn-dims" onclick="window.toggleDims()" style="opacity:0.4;pointer-events:none">📏 尺寸标注</button>
-    <button class="btn xray-btn" id="btn-xray" onclick="window.toggleXray()" style="opacity:0.4;pointer-events:none">🔍 透视电池槽</button>
     <button class="btn switch-btn" id="btn-switch" onclick="window.toggleSwitch()">⚡ 开关变色</button>
     <button class="btn" id="btn-reset" onclick="window.resetCamera()">🔄 重置视角</button>
   </div>
 </div>
 <div id="legend"><h3>🔬 器件层结构</h3></div>
+<div id="shortcuts">
+  <h3>⌨ 快捷键</h3>
+</div>
 <div id="detail-popup">
   <button class="close-btn" onclick="window.closeDetail()">✕</button>
   <h2 id="detail-title"></h2><div class="eng" id="detail-eng"></div><p id="detail-desc"></p><div id="detail-materials"></div>
@@ -90,15 +96,11 @@ const BATT_L=sc(6.5), BATT_W=sc(5.0), BATT_D=sc(1.65);
 const AA_R=sc(0.7), AA_L=sc(5.0);
 
 // Toggle switch dims
-const SW_R=sc(0.45);       // body radius
-const SW_H=sc(0.55);       // body height
-const SW_COLLAR_R=sc(0.35);
-const SW_COLLAR_H=sc(0.1);
-const SW_LEVER_R=sc(0.07);
-const SW_LEVER_L=sc(0.55);
+const SW_R=sc(0.45), SW_H=sc(0.55);
+const SW_COLLAR_R=sc(0.35), SW_COLLAR_H=sc(0.1);
+const SW_LEVER_R=sc(0.07), SW_LEVER_L=sc(0.55);
 const SW_TIP_R=sc(0.1);
-const SW_PIN_R=sc(0.05);
-const SW_PIN_L=sc(0.3);
+const SW_PIN_R=sc(0.05), SW_PIN_L=sc(0.3);
 
 // ═══════════════════════════
 //  LAYER DATA
@@ -192,64 +194,45 @@ addFrameBar(FRAME_BAR,DEVICE_THICK,GLASS_SIDE,fbx,0,0);
 addFrameBar(FRAME_BAR,DEVICE_THICK,GLASS_SIDE,-fbx,0,0);
 
 // ═══════════════════════════
-//  BASE — default OPAQUE
+//  BASE — solid opaque
 // ═══════════════════════════
-// X-ray render order: batt contents=0, base shell=1, outlines=2
 const baseBodyGeo=new THREE.BoxGeometry(BASE_L,BASE_H,BASE_W,1,1,1);
 const baseBodyMat=new THREE.MeshStandardMaterial({color:0x1c1c1e,metalness:0.06,roughness:0.68});
 const baseBody=new THREE.Mesh(baseBodyGeo,baseBodyMat);
 baseBody.castShadow=true;baseBody.receiveShadow=true;baseBody.userData={isBase:true};
-baseBody.position.y=BASE_H/2;baseBody.renderOrder=1;
+baseBody.position.y=BASE_H/2;
 baseGroup.add(baseBody);
 
-// Base top plate
 const plateGeo=new THREE.BoxGeometry(BASE_L-0.3,0.08,BASE_W-0.3,1,1,1);
-const plateMat2=new THREE.MeshStandardMaterial({color:0x242426,metalness:0.12,roughness:0.5});
-const plate=new THREE.Mesh(plateGeo,plateMat2);
-plate.position.y=BASE_H/2+0.04;plate.receiveShadow=true;plate.renderOrder=1;
+const plate=new THREE.Mesh(plateGeo,new THREE.MeshStandardMaterial({color:0x242426,metalness:0.12,roughness:0.5}));
+plate.position.y=BASE_H/2+0.04;plate.receiveShadow=true;
 baseGroup.add(plate);
 
-// Base wireframe outline (always visible for shape readability)
-const baseEdgeGeo2=new THREE.EdgesGeometry(baseBodyGeo);
-const baseEdge2=new THREE.LineSegments(baseEdgeGeo2,new THREE.LineBasicMaterial({color:0x555566,transparent:true,opacity:0.55,depthTest:false,depthWrite:false}));
-baseEdge2.position.y=BASE_H/2;baseEdge2.renderOrder=2;
-baseGroup.add(baseEdge2);
-
 // ═══════════════════════════
-//  BATTERY COMPARTMENT — redesigned, clean
+//  BATTERY COMPARTMENT
 // ═══════════════════════════
 const battGroup=new THREE.Group();baseGroup.add(battGroup);
-// All batt contents must render BEFORE the base shell (renderOrder 0 < 1)
-function tagBattMesh(obj){obj.renderOrder=0;obj.traverse?.(c=>{c.renderOrder=0;});}
 const battFloorY=0.04;
 
-// Compartment outer shell (dark grey box with defined edges)
 const compGeo=new THREE.BoxGeometry(BATT_L,BATT_D,BATT_W);
-const compMat2=new THREE.MeshStandardMaterial({color:0x121215,roughness:0.8,metalness:0.03});
-const comp=new THREE.Mesh(compGeo,compMat2);
+const comp=new THREE.Mesh(compGeo,new THREE.MeshStandardMaterial({color:0x121215,roughness:0.8,metalness:0.03}));
 comp.position.set(0,battFloorY+BATT_D/2,0);battGroup.add(comp);
 
-// Compartment inner floor (slightly lighter, ribbed-looking)
 const floorGeo=new THREE.BoxGeometry(BATT_L-0.12,0.03,BATT_W-0.12);
-const floorMat2=new THREE.MeshStandardMaterial({color:0x1a1a1e,roughness:0.7,metalness:0.05});
-const floor2=new THREE.Mesh(floorGeo,floorMat2);
+const floor2=new THREE.Mesh(floorGeo,new THREE.MeshStandardMaterial({color:0x1a1a1e,roughness:0.7,metalness:0.05}));
 floor2.position.set(0,battFloorY+0.025,0);battGroup.add(floor2);
 
-// Side walls (thin strips to define the compartment opening)
 function addBattWall(x,y,z,w,h,d){
   const g=new THREE.BoxGeometry(w,h,d);
   const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0x18181c,roughness:0.75,metalness:0.04}));
   m.position.set(x,y,z);battGroup.add(m);
 }
-const wallT=0.06; // wall thickness
-// Left/right walls (along X)
-addBattWall(-BATT_L/2+wallT/2, battFloorY+BATT_D/2, 0, wallT, BATT_D-0.04, BATT_W-0.12);
-addBattWall( BATT_L/2-wallT/2, battFloorY+BATT_D/2, 0, wallT, BATT_D-0.04, BATT_W-0.12);
-// Front/back walls (along Z)
-addBattWall(0, battFloorY+BATT_D/2, -BATT_W/2+wallT/2, BATT_L-0.12, BATT_D-0.04, wallT);
-addBattWall(0, battFloorY+BATT_D/2,  BATT_W/2-wallT/2, BATT_L-0.12, BATT_D-0.04, wallT);
+const wallT=0.06;
+addBattWall(-BATT_L/2+wallT/2,battFloorY+BATT_D/2,0,wallT,BATT_D-0.04,BATT_W-0.12);
+addBattWall( BATT_L/2-wallT/2,battFloorY+BATT_D/2,0,wallT,BATT_D-0.04,BATT_W-0.12);
+addBattWall(0,battFloorY+BATT_D/2,-BATT_W/2+wallT/2,BATT_L-0.12,BATT_D-0.04,wallT);
+addBattWall(0,battFloorY+BATT_D/2, BATT_W/2-wallT/2,BATT_L-0.12,BATT_D-0.04,wallT);
 
-// Spring contacts (copper coils at each end)
 function addSpringContact(x,z,rotY){
   const g=new THREE.Group();
   for(let i=0;i<3;i++){
@@ -263,22 +246,16 @@ addSpringContact(-BATT_L/2+0.18, AA_R*1.25,Math.PI/2);
 addSpringContact( BATT_L/2-0.18,-AA_R*1.25,-Math.PI/2);
 addSpringContact( BATT_L/2-0.18, AA_R*1.25,-Math.PI/2);
 
-// 2× AA batteries
 function createAABattery(x,z){
   const g=new THREE.Group();
-  // Main body
   const body=new THREE.Mesh(new THREE.CylinderGeometry(AA_R,AA_R,AA_L*0.78,32),new THREE.MeshStandardMaterial({color:0xcccccc,metalness:0.7,roughness:0.25}));
   body.rotation.z=Math.PI/2;g.add(body);
-  // Label wrapper (dark band around middle)
   const wrap=new THREE.Mesh(new THREE.CylinderGeometry(AA_R+0.008,AA_R+0.008,AA_L*0.4,32),new THREE.MeshStandardMaterial({color:0x2a2a30,metalness:0.1,roughness:0.7}));
   wrap.rotation.z=Math.PI/2;g.add(wrap);
-  // Positive cap (brass)
   const cap=new THREE.Mesh(new THREE.CylinderGeometry(AA_R*0.72,AA_R,AA_L*0.11,32),new THREE.MeshStandardMaterial({color:0xd4a840,metalness:0.8,roughness:0.2}));
   cap.rotation.z=Math.PI/2;cap.position.set(AA_L*0.39-AA_L*0.055,0,0);g.add(cap);
-  // Positive nub
   const nub=new THREE.Mesh(new THREE.CylinderGeometry(AA_R*0.28,AA_R*0.35,AA_L*0.06,16),new THREE.MeshStandardMaterial({color:0xe8c860,metalness:0.85,roughness:0.15}));
   nub.rotation.z=Math.PI/2;nub.position.set(AA_L*0.39+AA_L*0.025,0,0);g.add(nub);
-  // Negative end
   const neg=new THREE.Mesh(new THREE.CylinderGeometry(AA_R*0.58,AA_R*0.82,AA_L*0.07,32),new THREE.MeshStandardMaterial({color:0xaaaaaa,metalness:0.7,roughness:0.25}));
   neg.rotation.z=Math.PI/2;neg.position.set(-AA_L*0.39+AA_L*0.035,0,0);g.add(neg);
   g.position.set(x,battFloorY+BATT_D/2,z);return g;
@@ -286,7 +263,7 @@ function createAABattery(x,z){
 battGroup.add(createAABattery(0,-AA_R*1.25));
 battGroup.add(createAABattery(0,AA_R*1.25));
 
-// +/- polarity marks (default hidden, shown with dims)
+// +/- polarity marks (hidden, shown only with dims)
 const battMarksGroup=new THREE.Group();battGroup.add(battMarksGroup);
 function makeBattMarking(text,x,z){
   const c=document.createElement('canvas');c.width=128;c.height=64;
@@ -302,63 +279,49 @@ battMarksGroup.add(makeBattMarking('+',AA_L*0.39+0.2,AA_R*1.25));
 battMarksGroup.add(makeBattMarking('−',-AA_L*0.39-0.2,AA_R*1.25));
 battMarksGroup.visible=false;
 
-// Tag all battery compartment meshes with renderOrder 0 (render before base shell)
-battGroup.traverse(c=>{if(c.isMesh||c.isLineSegments){c.renderOrder=0;c.material.depthTest=true;c.material.depthWrite=true;}});
-
 // ═══════════════════════════
-//  TOGGLE SWITCH — original design (cylindrical + lever + ball tip)
+//  TOGGLE SWITCH
 // ═══════════════════════════
 const switchGroup=new THREE.Group();switchGroup.userData={isSwitch:true};
 switchGroup.position.set(BASE_L*0.25,BASE_H,BASE_W*0.28);
 baseGroup.add(switchGroup);
 
-// Switch body (cylindrical)
 const swBodyGeo=new THREE.CylinderGeometry(SW_R,SW_R,SW_H,32);
-const swBodyMat2=new THREE.MeshStandardMaterial({color:0x3a3a3e,metalness:0.5,roughness:0.3});
-const swBody=new THREE.Mesh(swBodyGeo,swBodyMat2);
+const swBody=new THREE.Mesh(swBodyGeo,new THREE.MeshStandardMaterial({color:0x3a3a3e,metalness:0.5,roughness:0.3}));
 swBody.position.y=SW_H/2;swBody.castShadow=true;switchGroup.add(swBody);
 
-// Threaded collar
 const collarGeo=new THREE.CylinderGeometry(SW_COLLAR_R*0.92,SW_COLLAR_R,SW_COLLAR_H,32);
 const collar=new THREE.Mesh(collarGeo,new THREE.MeshStandardMaterial({color:0x888888,metalness:0.8,roughness:0.2}));
 collar.position.y=SW_H+SW_COLLAR_H/2;switchGroup.add(collar);
 
-// Toggle lever pivot
 const togglePivot=new THREE.Group();
 togglePivot.position.y=SW_H+SW_COLLAR_H*0.6;
 switchGroup.add(togglePivot);
 
-// Lever shaft
 const leverGeo=new THREE.CylinderGeometry(SW_LEVER_R*0.7,SW_LEVER_R,SW_LEVER_L,16);
 const leverMat2=new THREE.MeshStandardMaterial({color:0xcccccc,metalness:0.8,roughness:0.2});
 const lever=new THREE.Mesh(leverGeo,leverMat2);
-lever.position.y=SW_LEVER_L/2;lever.castShadow=true;
-togglePivot.add(lever);
+lever.position.y=SW_LEVER_L/2;lever.castShadow=true;togglePivot.add(lever);
 
-// Ball tip
 const tipGeo=new THREE.SphereGeometry(SW_TIP_R,16,8);
 const tip=new THREE.Mesh(tipGeo,leverMat2);
-tip.position.y=SW_LEVER_L+SW_TIP_R*0.3;
-togglePivot.add(tip);
+tip.position.y=SW_LEVER_L+SW_TIP_R*0.3;togglePivot.add(tip);
 
-// 6 pins (2 rows × 3)
 const pinMat=new THREE.MeshStandardMaterial({color:0x999999,metalness:0.9,roughness:0.2});
 for(let row=0;row<2;row++){
   for(let col=0;col<3;col++){
     const pinGeo2=new THREE.CylinderGeometry(SW_PIN_R,SW_PIN_R*0.8,SW_PIN_L,8);
     const pin=new THREE.Mesh(pinGeo2,pinMat);
-    pin.position.set((col-1)*SW_R*0.55, -SW_PIN_L/2, (row-0.5)*SW_R*0.65);
+    pin.position.set((col-1)*SW_R*0.55,-SW_PIN_L/2,(row-0.5)*SW_R*0.65);
     switchGroup.add(pin);
   }
 }
 
-// LED indicator
 const ledGeo2=new THREE.SphereGeometry(0.015,8,8);
 const ledOffMat2=new THREE.MeshStandardMaterial({color:0x442222,emissive:0x220000,emissiveIntensity:0.5,roughness:0.3});
 const ledOnMat2=new THREE.MeshStandardMaterial({color:0x9966dd,emissive:0x6633aa,emissiveIntensity:2.5,roughness:0.3});
 const ledDot=new THREE.Mesh(ledGeo2,ledOffMat2);
-ledDot.position.set(SW_R*0.55,SW_H*0.55,0);
-switchGroup.add(ledDot);
+ledDot.position.set(SW_R*0.55,SW_H*0.55,0);switchGroup.add(ledDot);
 
 // ═══════════════════════════
 //  DASHED LINES (exploded)
@@ -384,10 +347,10 @@ function clearAnnotations(){dimLines.forEach(l=>annotGroup.remove(l));dimLines.l
 
 function buildAnnotations(){
   clearAnnotations();
-  battMarksGroup.visible=showAnnotations||showXray;
+  battMarksGroup.visible=showAnnotations;
   if(!showAnnotations)return;
 
-  const fb=-FRAME_OUTER/2,ft=FRAME_OUTER/2,fl=-FRAME_OUTER/2,fr=FRAME_OUTER/2;
+  const fb=-FRAME_OUTER/2,fl=-FRAME_OUTER/2,fr=FRAME_OUTER/2;
   const gb=-GLASS_SIDE/2,gt=GLASS_SIDE/2,gl=-GLASS_SIDE/2;
   const baseTop=fb-0.06,baseBot=baseTop-BASE_H;
   const baseL2=-BASE_L/2,baseR2=BASE_L/2,baseFr=BASE_W/2,baseBk=-BASE_W/2;
@@ -399,22 +362,15 @@ function buildAnnotations(){
     const sp=makeDimText(text,new THREE.Vector3(tx||((x1+x2)/2),ty||((y1+y2)/2),tz||((z1+z2)/2)),1.2);annotGroup.add(sp);dimSprites.push(sp);
   }
 
-  // Glass 10×10
   dim(gl,gb-0.15,0.03,gl+GLASS_SIDE,gb-0.15,0.03,'10 cm');
   dim(gl-0.15,gb,0.03,gl-0.15,gt,0.03,'10 cm');
-  // Frame 11 cm
   dim(fl,fb-0.4,0.03,fr,fb-0.4,0.03,'11 cm (外框)');
-  // Base 15×6
   dim(baseL2,baseBot-0.15,baseFr+0.1,baseR2,baseBot-0.15,baseFr+0.1,'15 cm');
   dim(baseR2+0.2,baseBot,baseBk,baseR2+0.2,baseBot,baseFr,'6 cm');
-  // Battery: 5 cm width
-  dim(0,baseBot-0.06,-BATT_W/2, 0,baseBot-0.06,BATT_W/2, '5 cm');
-  // Battery: 6.5 cm length
-  dim(-BATT_L/2,baseBot-0.22,BATT_W/2+0.15, BATT_L/2,baseBot-0.22,BATT_W/2+0.15, '6.5 cm');
-  // Battery label
+  dim(0,baseBot-0.06,-BATT_W/2,0,baseBot-0.06,BATT_W/2,'5 cm');
+  dim(-BATT_L/2,baseBot-0.22,BATT_W/2+0.15,BATT_L/2,baseBot-0.22,BATT_W/2+0.15,'6.5 cm');
   const spBat=makeDimText('电池槽',new THREE.Vector3(0,baseBot-0.35,0),1.4);
   spBat.scale.set(1.2,0.3,1);annotGroup.add(spBat);dimSprites.push(spBat);
-  // AA labels
   const aay=battFloorY+baseBot;
   [-AA_R*1.25,AA_R*1.25].forEach(bz=>{const spAA=makeDimText('AA 1.5V',new THREE.Vector3(0,aay-0.08,bz),0.8);annotGroup.add(spAA);dimSprites.push(spAA);});
 }
@@ -425,32 +381,6 @@ function buildAnnotations(){
 let currentView='exploded';
 let switchOn=false;
 let showAnnotations=false;
-let showXray=false;
-
-function applyBaseOpacity(){
-  if(currentView==='stacked' && showXray){
-    // X-ray: base body semi-transparent, depthWrite OFF so batteries show through
-    baseBody.material.transparent=true;
-    baseBody.material.opacity=0.28;
-    baseBody.material.depthWrite=false;
-    plate.material.transparent=true;
-    plate.material.opacity=0.35;
-    plate.material.depthWrite=false;
-    baseEdge2.visible=true;
-  } else {
-    // Default: solid opaque base
-    baseBody.material.transparent=false;
-    baseBody.material.opacity=1;
-    baseBody.material.depthWrite=true;
-    plate.material.transparent=false;
-    plate.material.opacity=1;
-    plate.material.depthWrite=true;
-    baseEdge2.visible=false;
-  }
-  // Ensure render order stays correct
-  baseBody.renderOrder=1; plate.renderOrder=1;
-  baseEdge2.renderOrder=2;
-}
 
 function layoutExploded(){
   const gap=0.8,totalH=layers.reduce((s,l)=>s+l.thickness,0)+(layers.length-1)*gap;
@@ -460,8 +390,8 @@ function layoutExploded(){
   frameGroup.visible=false;baseGroup.visible=false;clearAnnotations();
   document.getElementById('switch-label-bar').classList.remove('visible');
   updateDashLines(true);updateLabels(true);
-  const dx=document.getElementById('btn-dims');dx.style.opacity='0.4';dx.style.pointerEvents='none';
-  const xr=document.getElementById('btn-xray');xr.style.opacity='0.4';xr.style.pointerEvents='none';
+  document.getElementById('btn-dims').style.opacity='0.4';
+  document.getElementById('btn-dims').style.pointerEvents='none';
 }
 
 function layoutStacked(){
@@ -471,45 +401,25 @@ function layoutStacked(){
   coreGroup.rotation.x=-Math.PI/2;coreGroup.position.set(0,0,0);
   baseGroup.position.set(0,-FRAME_OUTER/2-BASE_H/2-0.06,0);baseGroup.rotation.set(0,0,0);baseGroup.visible=true;
   frameGroup.visible=true;
-  applyBaseOpacity();
   updateDashLines(false);updateLabels(false);
   buildAnnotations();updateSwitchUI();
   const dx=document.getElementById('btn-dims');dx.style.opacity='1';dx.style.pointerEvents='auto';dx.classList.toggle('active',showAnnotations);
-  const xr=document.getElementById('btn-xray');xr.style.opacity='1';xr.style.pointerEvents='auto';xr.classList.toggle('active',showXray);
 }
 
 function setView(view){currentView=view;document.getElementById('btn-exploded').classList.toggle('active',view==='exploded');document.getElementById('btn-stacked').classList.toggle('active',view==='stacked');if(view==='exploded')layoutExploded();else layoutStacked();closeDetail();}
 
-// ═══════════════════════════
-//  TOGGLES
-// ═══════════════════════════
 function toggleDims(){if(currentView!=='stacked')return;showAnnotations=!showAnnotations;document.getElementById('btn-dims').classList.toggle('active',showAnnotations);buildAnnotations();}
-
-function toggleXray(){
-  if(currentView!=='stacked')return;
-  showXray=!showXray;
-  document.getElementById('btn-xray').classList.toggle('active',showXray);
-  applyBaseOpacity();
-  // Refresh +/- marks visibility: show if either dims or xray is on
-  battMarksGroup.visible=showAnnotations||showXray;
-}
 
 // ═══════════════════════════
 //  TOGGLE SWITCH — 0档(透明) / 1档(着色)
 // ═══════════════════════════
 function toggleSwitch(){switchOn=!switchOn;applyGelColor();updateToggleVisual();updateSwitchUI();const btn=document.getElementById('btn-switch');btn.classList.toggle('active',switchOn);btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';}
 function applyGelColor(){const gel=layerMeshes[1];const d=layers[1];if(switchOn){gel.material.color.set(d.colorOn);gel.material.opacity=0.82;gel.material.emissive=new THREE.Color(d.colorOn);gel.material.emissiveIntensity=0.3;}else{gel.material.color.set(d.color);gel.material.opacity=d.opacity;gel.material.emissive=new THREE.Color(0x000000);gel.material.emissiveIntensity=0;}}
-
-// Toggle lever tilt
-function updateToggleVisual(){
-  togglePivot.rotation.x = switchOn ? -0.55 : 0.55;
-  if(switchOn){ledDot.material=ledOnMat2.clone();}else{ledDot.material=ledOffMat2.clone();}
-}
-
+function updateToggleVisual(){togglePivot.rotation.x=switchOn?-0.55:0.55;if(switchOn)ledDot.material=ledOnMat2.clone();else ledDot.material=ledOffMat2.clone();}
 function updateSwitchUI(){const bar=document.getElementById('switch-label-bar');if(currentView==='stacked'){bar.classList.add('visible');document.getElementById('status-dot').style.background=switchOn?'#9b7fd4':'#666';document.getElementById('status-dot').style.boxShadow=switchOn?'0 0 10px #9b7fd4':'0 0 4px #666';document.getElementById('status-text').textContent=switchOn?'凝胶层：紫罗兰色 (1 档 — 着色态)':'凝胶层：透明 (0 档 — 褪色态)';}else{bar.classList.remove('visible');}}
 
 // ═══════════════════════════
-//  ORBIT CONTROLS
+//  ORBIT CONTROLS — no auto-rotate
 // ═══════════════════════════
 const controls=new OrbitControls(camera,renderer.domElement);
 controls.enableDamping=true;controls.dampingFactor=0.08;
@@ -540,21 +450,43 @@ const legendEl=document.getElementById('legend');
 layers.forEach((layer,i)=>{const it=document.createElement('div');it.className='legend-item';it.dataset.index=i;it.innerHTML=`<span class="legend-num">${layer.num}</span><span class="legend-swatch" style="background:#${new THREE.Color(layer.color).getHexString()};opacity:.8"></span><span>${layer.shortName}</span>`;it.addEventListener('click',()=>selectLayer(layerMeshes[i]));it.addEventListener('mouseenter',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();highlightLayer(layerMeshes[i],true);hoveredLayer=layerMeshes[i];container.classList.add('pointer');}});it.addEventListener('mouseleave',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();hoveredLayer=null;container.classList.remove('pointer');}});legendEl.appendChild(it);});
 function updateLegendHighlight(idx){Array.from(legendEl.querySelectorAll('.legend-item')).forEach((el,i)=>el.classList.toggle('highlight',i===idx));}
 
+// ═══════════════════════════
+//  SHORTCUTS PANEL (right side)
+// ═══════════════════════════
+const shortcutsEl=document.getElementById('shortcuts');
+const shortcutData=[
+  ['E','分解视图'],
+  ['S','堆叠视图'],
+  ['D','尺寸标注'],
+  ['A','开关变色'],
+  ['R','重置视角'],
+  ['1-3','选择层①-③'],
+  ['Esc','关闭详情'],
+  ['🖱','拖动旋转'],
+  ['🖱','滚轮缩放'],
+];
+shortcutData.forEach(([key,desc])=>{
+  const row=document.createElement('div');
+  row.className='shortcut-row';
+  row.innerHTML=`<span>${desc}</span><span class="shortcut-key">${key}</span>`;
+  shortcutsEl.appendChild(row);
+});
+
 // RENDER LOOP
 const clock=new THREE.Clock();
 function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();controls.update();if(selectedLayer){const p=1+Math.sin(performance.now()*0.005)*0.015;selectedLayer.scale.set(p,1,p);}if(switchOn&&currentView==='stacked'){ledDot.material.emissiveIntensity=2.5*(1+Math.sin(performance.now()*0.008)*0.4);}pts.rotation.y+=dt*0.03;pts.rotation.x+=dt*0.015;renderer.render(scene,camera);}
 
 // Events
 window.addEventListener('resize',()=>{camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);});
-window.addEventListener('keydown',e=>{switch(e.key.toLowerCase()){case'e':setView('exploded');break;case's':setView('stacked');break;case'a':toggleSwitch();break;case'r':resetCamera();break;case'd':if(currentView==='stacked')toggleDims();break;case'x':if(currentView==='stacked')toggleXray();break;case'escape':closeDetail();break;case'1':selectLayer(layerMeshes[0]);break;case'2':selectLayer(layerMeshes[1]);break;case'3':selectLayer(layerMeshes[2]);break;}});
+window.addEventListener('keydown',e=>{switch(e.key.toLowerCase()){case'e':setView('exploded');break;case's':setView('stacked');break;case'a':toggleSwitch();break;case'r':resetCamera();break;case'd':if(currentView==='stacked')toggleDims();break;case'escape':closeDetail();break;case'1':selectLayer(layerMeshes[0]);break;case'2':selectLayer(layerMeshes[1]);break;case'3':selectLayer(layerMeshes[2]);break;}});
 
 // Init
 layoutExploded();
 setTimeout(()=>{document.getElementById('hint').style.opacity='0';setTimeout(()=>document.getElementById('hint').remove(),1000);},12000);
 animate();
 
-window.setView=setView;window.resetCamera=resetCamera;window.toggleSwitch=toggleSwitch;window.toggleDims=toggleDims;window.toggleXray=toggleXray;window.closeDetail=closeDetail;
-console.log('🔬 ECD 3D 就绪 | E=分解 S=堆叠 D=标注 X=透视 A=变色');
+window.setView=setView;window.resetCamera=resetCamera;window.toggleSwitch=toggleSwitch;window.toggleDims=toggleDims;window.closeDetail=closeDetail;
+console.log('🔬 ECD 3D 就绪 | E=分解 S=堆叠 D=标注 A=变色');
 </script>
 </body>
 </html>
