@@ -153,10 +153,6 @@ const fl=new THREE.DirectionalLight(0x8899cc,2);fl.position.set(-5,3,-4);scene.a
 const rl=new THREE.DirectionalLight(0xaaccff,3);rl.position.set(0,-1,8);scene.add(rl);
 scene.add(new THREE.PointLight(0xffffff,6,20)).position.set(0,12,0);
 
-// Ground shadow
-const gnd=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.ShadowMaterial({opacity:0.22}));
-gnd.rotation.x=-Math.PI/2;gnd.position.y=-8;gnd.receiveShadow=true;scene.add(gnd);
-
 // Particles
 const pGeo=new THREE.BufferGeometry();const pArr=new Float32Array(500*3);
 for(let i=0;i<500;i++){pArr[i*3]=(Math.random()-.5)*22;pArr[i*3+1]=(Math.random()-.5)*14;pArr[i*3+2]=(Math.random()-.5)*16}
