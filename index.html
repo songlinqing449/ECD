@@ -201,20 +201,6 @@ layers.forEach((layer,idx)=>{
       mesh.add(particle);
       gelParticles.push({mesh:particle,baseOpacity:0.35});
     }
-    // A few larger "bubble" voids
-    for(let bi=0;bi<15;bi++){
-      const br=(Math.random()*0.06+0.03);
-      const bGeo=new THREE.SphereGeometry(br,6,6);
-      const bMat=new THREE.MeshPhysicalMaterial({
-        color:0xffffff,metalness:0,roughness:0.4,transparent:true,opacity:0.18,
-        envMapIntensity:0
-      });
-      const bubble=new THREE.Mesh(bGeo,bMat);
-      bubble.position.set((Math.random()-0.5)*2*hw*0.75,(Math.random()-0.5)*2*hh*0.6,(Math.random()-0.5)*2*hw*0.75);
-      bubble.userData={isGelBubble:true};
-      mesh.add(bubble);
-      gelParticles.push({mesh:bubble,baseOpacity:0.18});
-    }
   }
 });
 
@@ -461,9 +447,9 @@ function applyGelColor(){
     gel.material.attenuationDistance=0.5;
     // Tint internal particles violet
     gel.traverse(c=>{
-      if(c.userData&&(c.userData.isGelParticle||c.userData.isGelBubble)){
+      if(c.userData&&c.userData.isGelParticle){
         c.material.color.set(d.colorOn);
-        c.material.opacity=c.userData.isGelBubble?0.3:0.5;
+        c.material.opacity=0.5;
       }
     });
   }else{
@@ -476,9 +462,9 @@ function applyGelColor(){
     gel.material.attenuationDistance=0.8;
     // Restore internal particles to clear
     gel.traverse(c=>{
-      if(c.userData&&(c.userData.isGelParticle||c.userData.isGelBubble)){
+      if(c.userData&&c.userData.isGelParticle){
         c.material.color.set(0xffffff);
-        c.material.opacity=c.userData.isGelBubble?0.18:0.35;
+        c.material.opacity=0.35;
       }
     });
   }
