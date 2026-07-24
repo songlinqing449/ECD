@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电致变色器件 (ECD) - 交互式3D模型</title>
+<style>
+  :root {
+    --bg: #0a0a14;
+    --panel-bg: rgba(16, 16, 30, 0.95);
+    --text: #e0e0e0;
+    --accent: #4da6ff;
+    --accent2: #ff6b6b;
+    --gold: #f0c060;
+    --border: rgba(255,255,255,0.1);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+    cursor: grab;
+  }
+  #canvas-container:active { cursor: grabbing; }
+  #canvas-container.pointer { cursor: pointer; }
+
+  /* ── Top title bar ── */
+  #title-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+  }
+  #title-bar > * { pointer-events: auto; }
+  #title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 30px rgba(77,166,255,0.5);
+  }
+  #title .en {
+    font-weight: 400;
+    font-size: 0.75rem;
+    opacity: 0.6;
+    display: block;
+    letter-spacing: 0.08em;
+  }
+
+  /* ── Buttons ── */
+  .btn-group {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 10px 18px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+    backdrop-filter: blur(12px);
+    transition: all 0.25s;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: rgba(40,40,70,0.9);
+    border-color: rgba(255,255,255,0.25);
+  }
+  .btn.active {
+    background: rgba(77,166,255,0.25);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 16px rgba(77,166,255,0.3);
+  }
+  .btn.accent {
+    background: rgba(240,192,96,0.2);
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+  .btn.accent:hover {
+    background: rgba(240,192,96,0.35);
+    box-shadow: 0 0 20px rgba(240,192,96,0.3);
+  }
+  .btn.accent.active {
+    background: rgba(240,192,96,0.35);
+    box-shadow: 0 0 24px rgba(240,192,96,0.45);
+  }
+
+  /* ── Legend panel ── */
+  #legend {
+    position: fixed;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    backdrop-filter: blur(16px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 200px;
+    transition: opacity 0.3s;
+  }
+  #legend h3 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.5);
+    margin-bottom: 6px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.82rem;
+    color: #bbb;
+    border: 1px solid transparent;
+  }
+  .legend-item:hover {
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+  }
+  .legend-item.highlight {
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.2);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(0,0,0,0.3);
+  }
+  .legend-swatch {
+    width: 28px; height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .legend-num {
+    font-size: 0.65rem;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.1);
+    color: #888;
+    flex-shrink: 0;
+  }
+
+  /* ── Detail popup ── */
+  #detail-popup {
+    position: fixed;
+    left: 50%;
+    bottom: 40px;
+    transform: translateX(-50%);
+    z-index: 20;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 24px 32px;
+    backdrop-filter: blur(20px);
+    max-width: 560px;
+    width: 90%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s, transform 0.35s;
+    transform: translateX(-50%) translateY(20px);
+  }
+  #detail-popup.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+  }
+  #detail-popup .close-btn {
+    position: absolute;
+    top: 10px; right: 16px;
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 4px 8px;
+    border-radius: 50%;
+  }
+  #detail-popup .close-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+  #detail-popup h2 {
+    font-size: 1.15rem;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+  #detail-popup .eng {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 10px;
+  }
+  #detail-popup p {
+    font-size: 0.9rem;
+    color: #bbb;
+    line-height: 1.6;
+  }
+  #detail-popup .material-tag {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    background: rgba(77,166,255,0.15);
+    color: var(--accent);
+    font-size: 0.75rem;
+    margin: 2px 4px 2px 0;
+  }
+
+  /* ── Hint ── */
+  #hint {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.35);
+    font-size: 0.75rem;
+    z-index: 5;
+    pointer-events: none;
+    transition: opacity 1s;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    #legend {
+      right: 4px;
+      padding: 12px;
+      gap: 2px;
+      min-width: 160px;
+      border-radius: 12px;
+    }
+    .legend-item {
+      padding: 6px 8px;
+      font-size: 0.7rem;
+      gap: 6px;
+    }
+    .legend-swatch { width: 20px; height: 10px; }
+    #title { font-size: 1.1rem; }
+    .btn { padding: 8px 14px; font-size: 0.75rem; }
+    #title-bar { padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="title-bar">
+  <div id="title">
+    电致变色器件
+    <span class="en">Electrochromic Device (ECD)</span>
+  </div>
+  <div class="btn-group">
+    <button class="btn active" id="btn-exploded" onclick="setView('exploded')">💥 分解视图</button>
+    <button class="btn" id="btn-stacked" onclick="setView('stacked')">📐 堆叠视图</button>
+    <button class="btn accent" id="btn-animate" onclick="toggleAnimation()">⚡ 变色演示</button>
+    <button class="btn" id="btn-reset" onclick="resetCamera()">🔄 重置视角</button>
+  </div>
+</div>
+
+<div id="legend">
+  <h3>🔬 器件层结构</h3>
+</div>
+
+<div id="detail-popup">
+  <button class="close-btn" onclick="closeDetail()">✕</button>
+  <h2 id="detail-title"></h2>
+  <div class="eng" id="detail-eng"></div>
+  <p id="detail-desc"></p>
+  <div id="detail-materials"></div>
+</div>
+
+<div id="hint">🖱 拖动旋转 &nbsp;|&nbsp; 滚轮缩放 &nbsp;|&nbsp; 点击层查看详情</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ──────────────────────────────────
+// DATA: Electrochromic Device Layers
+// ──────────────────────────────────
+const layers = [
+  {
+    id: 'glass-top',
+    num: 1,
+    name: '玻璃基底（上）',
+    eng: 'Glass Substrate (Top)',
+    desc: '透明玻璃或柔性聚合物基底，提供结构支撑并允许光线透过。是整个器件的"窗口"，光学透过率通常 > 90%。',
+    materials: ['钠钙玻璃', '石英玻璃', 'PET (柔性)'],
+    color: 0xa8d8ea,
+    opacity: 0.35,
+    thickness: 0.3,
+    metalness: 0.05,
+    roughness: 0.2,
+  },
+  {
+    id: 'ito-top',
+    num: 2,
+    name: '透明导电层（上电极）',
+    eng: 'Transparent Conductive Layer — ITO (Top Electrode)',
+    desc: '氧化铟锡 (ITO) 薄膜，兼具高导电性和高透光性。作为工作电极，为电致变色层提供均匀电场。方块电阻通常 < 20 Ω/sq。',
+    materials: ['ITO (In₂O₃:Sn)', 'FTO', 'AZO', 'Ag纳米线'],
+    color: 0xd4e8c0,
+    opacity: 0.6,
+    thickness: 0.08,
+    metalness: 0.3,
+    roughness: 0.15,
+  },
+  {
+    id: 'ec-layer',
+    num: 3,
+    name: '电致变色层',
+    eng: 'Electrochromic Layer — WO₃',
+    desc: '核心功能层！施加电压时，离子 (Li⁺/H⁺) 和电子共同注入，WO₃ 由透明变为深蓝色。反应：WO₃ + xLi⁺ + xe⁻ ⇌ LiₓWO₃。这是整个器件的"变色心脏"。',
+    materials: ['WO₃ (三氧化钨)', 'MoO₃', 'PEDOT:PSS', '紫精 (Viologen)'],
+    color: 0x3399cc,
+    opacity: 0.7,
+    thickness: 0.15,
+    metalness: 0.1,
+    roughness: 0.4,
+    isEC: true, // the layer that changes color
+  },
+  {
+    id: 'electrolyte',
+    num: 4,
+    name: '电解质 / 离子导体层',
+    eng: 'Electrolyte / Ion Conductor Layer',
+    desc: '离子传输通道。在电场驱动下，Li⁺ 或 H⁺ 离子穿过此层在电致变色层和离子存储层之间迁移。需要高离子电导率和极低的电子电导率。',
+    materials: ['LiClO₄/PC', 'LiPON', 'Ta₂O₅', 'PMMA凝胶电解质'],
+    color: 0xf5f0e8,
+    opacity: 0.5,
+    thickness: 0.12,
+    metalness: 0.0,
+    roughness: 0.6,
+  },
+  {
+    id: 'ion-storage',
+    num: 5,
+    name: '离子存储层（对电极）',
+    eng: 'Ion Storage Layer / Counter Electrode',
+    desc: '存储和释放离子的"仓库"。在着色过程中释放 Li⁺，在褪色过程中接收 Li⁺。可选用互补变色材料实现双重着色，提升变色效率。',
+    materials: ['NiO', 'CeO₂', 'V₂O₅', 'LiCoO₂'],
+    color: 0xc8d8a0,
+    opacity: 0.65,
+    thickness: 0.15,
+    metalness: 0.1,
+    roughness: 0.45,
+  },
+  {
+    id: 'ito-bottom',
+    num: 6,
+    name: '透明导电层（下电极）',
+    eng: 'Transparent Conductive Layer — ITO (Bottom Electrode)',
+    desc: '对电极侧的 ITO 导电层，与上电极对称。施加反向电压时，离子反向迁移，器件恢复透明——实现可逆变色。',
+    materials: ['ITO (In₂O₃:Sn)', 'FTO', 'AZO'],
+    color: 0xd4e8c0,
+    opacity: 0.6,
+    thickness: 0.08,
+    metalness: 0.3,
+    roughness: 0.15,
+  },
+  {
+    id: 'glass-bottom',
+    num: 7,
+    name: '玻璃基底（下）',
+    eng: 'Glass Substrate (Bottom)',
+    desc: '底部透明基底，与顶部玻璃对称，共同封装保护内部功能层。两个玻璃基底通过边缘密封胶封装，防止水氧侵入。',
+    materials: ['钠钙玻璃', '石英玻璃', 'PET (柔性)'],
+    color: 0xa8d8ea,
+    opacity: 0.35,
+    thickness: 0.3,
+    metalness: 0.05,
+    roughness: 0.2,
+  },
+];
+
+// ──────────────────────────────────
+// THREE.JS SETUP
+// ──────────────────────────────────
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+
+// Background gradient
+const bgColor = new THREE.Color(0x0a0a18);
+scene.background = bgColor;
+scene.fog = new THREE.Fog(0x0a0a18, 12, 40);
+
+// Camera
+const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.5, 60);
+camera.position.set(5, 3.5, 9);
+camera.lookAt(0, 0, 0);
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+container.appendChild(renderer.domElement);
+
+// ── Lighting ──
+const ambientLight = new THREE.AmbientLight(0x334466, 2.5);
+scene.add(ambientLight);
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 6);
+keyLight.position.set(8, 12, 8);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 0.5;
+keyLight.shadow.camera.far = 60;
+keyLight.shadow.camera.left = -10;
+keyLight.shadow.camera.right = 10;
+keyLight.shadow.camera.top = 10;
+keyLight.shadow.camera.bottom = -10;
+keyLight.shadow.bias = -0.0001;
+scene.add(keyLight);
+
+const fillLight = new THREE.DirectionalLight(0x8899cc, 2);
+fillLight.position.set(-4, 2, -3);
+scene.add(fillLight);
+
+const rimLight = new THREE.DirectionalLight(0xaaccff, 3);
+rimLight.position.set(0, -1, 6);
+scene.add(rimLight);
+
+const topLight = new THREE.PointLight(0xffffff, 8, 15);
+topLight.position.set(0, 8, 0);
+scene.add(topLight);
+
+// ── Ground plane for shadows ──
+const groundGeo = new THREE.PlaneGeometry(20, 20);
+const groundMat = new THREE.ShadowMaterial({ opacity: 0.25 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -4;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// ── Particle field background ──
+const particlesGeo = new THREE.BufferGeometry();
+const particlesCount = 400;
+const positions = new Float32Array(particlesCount * 3);
+for (let i = 0; i < particlesCount; i++) {
+  positions[i * 3] = (Math.random() - 0.5) * 16;
+  positions[i * 3 + 1] = (Math.random() - 0.5) * 10;
+  positions[i * 3 + 2] = (Math.random() - 0.5) * 12;
+}
+particlesGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+const particlesMat = new THREE.PointsMaterial({
+  size: 0.015,
+  color: 0x4488cc,
+  transparent: true,
+  opacity: 0.5,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const particles = new THREE.Points(particlesGeo, particlesMat);
+scene.add(particles);
+
+// ──────────────────────────────────
+// BUILD DEVICE LAYERS
+// ──────────────────────────────────
+const deviceGroup = new THREE.Group();
+scene.add(deviceGroup);
+
+const layerMeshes = [];
+const WIDTH = 3.2;
+const DEPTH = 2.0;
+
+layers.forEach((layer, index) => {
+  const geo = new THREE.BoxGeometry(WIDTH, layer.thickness, DEPTH, 1, 1, 1);
+
+  // Beveled edges via slight rounded look
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(layer.color),
+    metalness: layer.metalness,
+    roughness: layer.roughness,
+    transparent: true,
+    opacity: layer.opacity,
+    envMapIntensity: 0.4,
+    clearcoat: layer.id.includes('glass') ? 0.3 : 0.0,
+    clearcoatRoughness: 0.1,
+    specularIntensity: 0.5,
+    specularColor: new THREE.Color(0xffffff),
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData = { layerIndex: index, layerData: layer };
+
+  // Wireframe overlay for definition
+  const edgeGeo = new THREE.EdgesGeometry(geo);
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.15,
+    depthTest: true,
+  });
+  const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+  mesh.add(edges);
+
+  layerMeshes.push(mesh);
+  deviceGroup.add(mesh);
+});
+
+// ── Connecting dashed lines (for exploded view) ──
+const dashGroup = new THREE.Group();
+deviceGroup.add(dashGroup);
+
+function createDashedLine(y1, y2) {
+  const points = [new THREE.Vector3(0, y1, 0), new THREE.Vector3(0, y2, 0)];
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const mat = new THREE.LineDashedMaterial({
+    color: 0x667799,
+    dashSize: 0.15,
+    gapSize: 0.1,
+    transparent: true,
+    opacity: 0.5,
+  });
+  const line = new THREE.Line(geo, mat);
+  line.computeLineDistances();
+  return line;
+}
+
+function updateDashLines(exploded) {
+  // Remove old
+  while (dashGroup.children.length > 0) dashGroup.remove(dashGroup.children[0]);
+
+  if (!exploded) return;
+
+  const gap = 0.55;
+  for (let i = 0; i < layerMeshes.length - 1; i++) {
+    const meshA = layerMeshes[i];
+    const meshB = layerMeshes[i + 1];
+    const y1 = meshA.position.y + layers[i].thickness / 2;
+    const y2 = meshB.position.y - layers[i + 1].thickness / 2;
+    const line = createDashedLine(y1, y2);
+    line.position.x = WIDTH * 0.42;
+    line.position.z = DEPTH * 0.35;
+    dashGroup.add(line);
+
+    const line2 = createDashedLine(y1, y2);
+    line2.position.x = -WIDTH * 0.42;
+    line2.position.z = -DEPTH * 0.35;
+    dashGroup.add(line2);
+  }
+}
+
+// ── Labels (sprites) ──
+const labelSprites = [];
+
+function createLabel(text, position) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+
+  // Background pill
+  ctx.fillStyle = 'rgba(10,10,24,0.85)';
+  roundRect(ctx, 40, 20, 432, 88, 20);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 2;
+  roundRect(ctx, 40, 20, 432, 88, 20);
+  ctx.stroke();
+
+  // Text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 32px "PingFang SC","Microsoft YaHei","Segoe UI",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 64);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  const spriteMat = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.position.copy(position);
+  sprite.scale.set(2.0, 0.5, 1);
+  return sprite;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function updateLabels(exploded) {
+  // Remove old
+  labelSprites.forEach(s => deviceGroup.remove(s));
+  labelSprites.length = 0;
+
+  layerMeshes.forEach((mesh, i) => {
+    const y = mesh.position.y;
+    const xOffset = WIDTH / 2 + 0.9;
+    const label = createLabel(layers[i].name, new THREE.Vector3(xOffset, y, 0));
+    label.userData = { layerIndex: i };
+    deviceGroup.add(label);
+    labelSprites.push(label);
+  });
+}
+
+// ──────────────────────────────────
+// LAYOUT FUNCTIONS
+// ──────────────────────────────────
+let currentView = 'exploded';
+
+function layoutStacked() {
+  let y = 0;
+  layerMeshes.forEach((mesh, i) => {
+    // Calculate y so stack is centered
+    y += layers[i].thickness / 2;
+    mesh.position.y = y;
+    y += layers[i].thickness / 2;
+  });
+  // Center the whole stack
+  const totalHeight = layers.reduce((s, l) => s + l.thickness, 0);
+  layerMeshes.forEach(mesh => {
+    mesh.position.y -= totalHeight / 2;
+  });
+}
+
+function layoutExploded() {
+  const gap = 0.55;
+  let totalHeight = layers.reduce((s, l) => s + l.thickness, 0);
+  totalHeight += (layers.length - 1) * gap;
+
+  let y = -totalHeight / 2;
+  layerMeshes.forEach((mesh, i) => {
+    y += layers[i].thickness / 2;
+    mesh.position.y = y;
+    y += layers[i].thickness / 2 + gap;
+  });
+}
+
+function setView(view) {
+  currentView = view;
+  document.getElementById('btn-exploded').classList.toggle('active', view === 'exploded');
+  document.getElementById('btn-stacked').classList.toggle('active', view === 'stacked');
+
+  if (view === 'exploded') {
+    layoutExploded();
+  } else {
+    layoutStacked();
+  }
+  updateDashLines(view === 'exploded');
+  updateLabels(view === 'exploded');
+}
+
+// ──────────────────────────────────
+// ORBIT CONTROLS
+// ──────────────────────────────────
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0, 0);
+controls.minDistance = 4;
+controls.maxDistance = 18;
+controls.maxPolarAngle = Math.PI * 0.75;
+controls.minPolarAngle = Math.PI * 0.15;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.4;
+controls.update();
+
+function resetCamera() {
+  camera.position.set(5, 3.5, 9);
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
+// ──────────────────────────────────
+// RAYCASTER — Click & hover detection
+// ──────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let hoveredLayer = null;
+let selectedLayer = null;
+
+function getIntersection(event) {
+  mouse.x = (event.clientX / container.clientWidth) * 2 - 1;
+  mouse.y = -(event.clientY / container.clientHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  return raycaster.intersectObjects(layerMeshes, false);
+}
+
+container.addEventListener('mousemove', (event) => {
+  const hits = getIntersection(event);
+  if (hits.length > 0) {
+    const obj = hits[0].object;
+    if (obj.userData.layerData) {
+      container.classList.add('pointer');
+      if (hoveredLayer !== obj) {
+        resetHighlight();
+        hoveredLayer = obj;
+        highlightLayer(obj, true);
+      }
+      return;
+    }
+  }
+  container.classList.remove('pointer');
+  if (hoveredLayer) {
+    resetHighlight();
+    hoveredLayer = null;
+  }
+  updateLegendHighlight(null);
+});
+
+container.addEventListener('click', (event) => {
+  const hits = getIntersection(event);
+  if (hits.length > 0) {
+    const obj = hits[0].object;
+    if (obj.userData.layerData) {
+      selectLayer(obj);
+    }
+  }
+});
+
+function highlightLayer(mesh, on) {
+  const idx = mesh.userData.layerIndex;
+  const layer = layers[idx];
+  mesh.material.emissive = on ? new THREE.Color(layer.color) : new THREE.Color(0x000000);
+  mesh.material.emissiveIntensity = on ? 0.4 : 0;
+  mesh.material.opacity = on ? Math.min(layer.opacity + 0.2, 0.95) : layer.opacity;
+
+  // Scale slightly
+  const s = on ? 1.04 : 1.0;
+  mesh.scale.set(s, 1, s);
+
+  updateLegendHighlight(on ? idx : null);
+}
+
+function resetHighlight() {
+  layerMeshes.forEach((mesh, i) => {
+    mesh.material.emissive = new THREE.Color(0x000000);
+    mesh.material.emissiveIntensity = 0;
+    mesh.material.opacity = layers[i].opacity;
+    mesh.scale.set(1, 1, 1);
+  });
+}
+
+function selectLayer(mesh) {
+  const idx = mesh.userData.layerIndex;
+  const layer = layers[idx];
+
+  if (selectedLayer === mesh) {
+    closeDetail();
+    return;
+  }
+
+  // Reset previous selection
+  if (selectedLayer) resetHighlight();
+
+  selectedLayer = mesh;
+  highlightLayer(mesh, true);
+
+  // Update popup
+  document.getElementById('detail-title').textContent = `第 ${layer.num} 层 — ${layer.name}`;
+  document.getElementById('detail-eng').textContent = layer.eng;
+  document.getElementById('detail-desc').textContent = layer.desc;
+  const matDiv = document.getElementById('detail-materials');
+  matDiv.innerHTML = layer.materials.map(m =>
+    `<span class="material-tag">${m}</span>`
+  ).join(' ');
+  document.getElementById('detail-popup').classList.add('visible');
+
+  // Fly camera to focus on the layer
+  const worldPos = new THREE.Vector3();
+  mesh.getWorldPosition(worldPos);
+  // Smooth animate toward the layer
+  animateCamera(new THREE.Vector3(worldPos.x + 4, worldPos.y, 5.5), worldPos);
+}
+
+function closeDetail() {
+  document.getElementById('detail-popup').classList.remove('visible');
+  if (selectedLayer) {
+    resetHighlight();
+    selectedLayer = null;
+  }
+  updateLegendHighlight(null);
+}
+
+function animateCamera(targetPos, lookTarget) {
+  const startPos = camera.position.clone();
+  const startLook = controls.target.clone();
+  const startTime = performance.now();
+  const duration = 800;
+
+  function step(time) {
+    const elapsed = time - startTime;
+    const t = Math.min(elapsed / duration, 1.0);
+    // Ease in-out
+    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+    camera.position.lerpVectors(startPos, targetPos, ease);
+    controls.target.lerpVectors(startLook, lookTarget, ease);
+    controls.update();
+
+    if (t < 1) {
+      requestAnimationFrame(step);
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+// ──────────────────────────────────
+// LEGEND
+// ──────────────────────────────────
+const legendEl = document.getElementById('legend');
+
+function buildLegend() {
+  layers.forEach((layer, i) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.dataset.index = i;
+    item.innerHTML = `
+      <span class="legend-num">${layer.num}</span>
+      <span class="legend-swatch" style="background:${'#' + new THREE.Color(layer.color).getHexString()};opacity:${layer.opacity}"></span>
+      <span>${layer.name.length > 10 ? layer.name.slice(0, 10) + '…' : layer.name}</span>
+    `;
+    item.addEventListener('click', () => {
+      selectLayer(layerMeshes[i]);
+    });
+    item.addEventListener('mouseenter', () => {
+      if (!selectedLayer || selectedLayer !== layerMeshes[i]) {
+        resetHighlight();
+        highlightLayer(layerMeshes[i], true);
+        hoveredLayer = layerMeshes[i];
+        container.classList.add('pointer');
+      }
+    });
+    item.addEventListener('mouseleave', () => {
+      if (!selectedLayer || selectedLayer !== layerMeshes[i]) {
+        resetHighlight();
+        hoveredLayer = null;
+        container.classList.remove('pointer');
+      }
+    });
+    legendEl.appendChild(item);
+  });
+}
+
+function updateLegendHighlight(idx) {
+  Array.from(legendEl.querySelectorAll('.legend-item')).forEach((el, i) => {
+    el.classList.toggle('highlight', i === idx);
+  });
+}
+
+buildLegend();
+
+// ──────────────────────────────────
+// ELECTROCHROMIC ANIMATION
+// ──────────────────────────────────
+let isAnimating = false;
+let animationTime = 0;
+const ecLayerIndex = layers.findIndex(l => l.isEC);
+const ecMesh = layerMeshes[ecLayerIndex];
+const ecOriginalColor = new THREE.Color(layers[ecLayerIndex].color);
+
+function toggleAnimation() {
+  isAnimating = !isAnimating;
+  const btn = document.getElementById('btn-animate');
+  btn.classList.toggle('active', isAnimating);
+  btn.textContent = isAnimating ? '⏸ 停止演示' : '⚡ 变色演示';
+  if (!isAnimating) {
+    // Reset EC layer color
+    ecMesh.material.color.copy(ecOriginalColor);
+    ecMesh.material.opacity = layers[ecLayerIndex].opacity;
+  }
+}
+
+// ──────────────────────────────────
+// RENDER LOOP
+// ──────────────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  const dt = clock.getDelta();
+  controls.update();
+
+  // Electrochromic animation
+  if (isAnimating) {
+    animationTime += dt * 1.5;
+    // Oscillate between transparent and deep blue
+    const t = (Math.sin(animationTime) + 1) / 2; // 0..1
+    const blueColor = new THREE.Color(0x1133aa); // Deep blue (colored state)
+    ecMesh.material.color.copy(ecOriginalColor).lerp(blueColor, t);
+    ecMesh.material.opacity = layers[ecLayerIndex].opacity + t * 0.25;
+
+    // Also subtly affect ion storage layer (complementary)
+    const isMesh = layerMeshes[4]; // Ion storage layer
+    if (isMesh) {
+      const isOrigColor = new THREE.Color(layers[4].color);
+      const isDarkColor = new THREE.Color(0x889966);
+      isMesh.material.color.copy(isOrigColor).lerp(isDarkColor, t * 0.6);
+    }
+  }
+
+  // Pulse selected layer
+  if (selectedLayer && !isAnimating) {
+    const pulse = 1 + Math.sin(performance.now() * 0.005) * 0.015;
+    selectedLayer.scale.set(pulse, 1, pulse);
+  }
+
+  // Slowly rotate particles
+  particles.rotation.y += dt * 0.04;
+  particles.rotation.x += dt * 0.02;
+
+  renderer.render(scene, camera);
+}
+
+// ──────────────────────────────────
+// RESPONSIVE
+// ──────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = container.clientWidth / container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+});
+
+// Keyboard shortcuts
+window.addEventListener('keydown', (e) => {
+  switch (e.key.toLowerCase()) {
+    case 'e':
+      setView('exploded');
+      break;
+    case 's':
+      setView('stacked');
+      break;
+    case 'a':
+      toggleAnimation();
+      break;
+    case 'r':
+      resetCamera();
+      break;
+    case 'escape':
+      closeDetail();
+      break;
+    case '1': case '2': case '3': case '4': case '5': case '6': case '7':
+      const idx = parseInt(e.key) - 1;
+      selectLayer(layerMeshes[idx]);
+      break;
+  }
+});
+
+// ──────────────────────────────────
+// INIT
+// ──────────────────────────────────
+layoutExploded();
+updateDashLines(true);
+updateLabels(true);
+
+// Hide hint after a few seconds
+setTimeout(() => {
+  document.getElementById('hint').style.opacity = '0';
+  setTimeout(() => document.getElementById('hint').remove(), 1000);
+}, 8000);
+
+animate();
+
+// Expose to window for button handlers
+window.setView = setView;
+window.resetCamera = resetCamera;
+window.toggleAnimation = toggleAnimation;
+window.closeDetail = closeDetail;
+
+console.log('🔬 电致变色器件 3D 模型已就绪');
+console.log('  🖱 拖动鼠标旋转 | 滚轮缩放 | 右键平移');
+console.log('  ⌨ 快捷键: E=分解 S=堆叠 A=变色演示 R=重置 1-7=选择层 ESC=关闭');
+console.log('  💡 点击层或右侧图例查看详细信息');
+</script>
+</body>
+</html>
