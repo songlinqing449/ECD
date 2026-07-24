@@ -25,6 +25,9 @@
   .btn.switch-btn{background:rgba(155,127,212,.2);border-color:var(--violet);color:var(--violet)}
   .btn.switch-btn:hover{background:rgba(155,127,212,.35);box-shadow:0 0 20px rgba(155,127,212,.3)}
   .btn.switch-btn.active{background:rgba(155,127,212,.4);box-shadow:0 0 24px rgba(155,127,212,.5)}
+  .btn.dim-btn{background:rgba(240,192,96,.15);border-color:var(--gold);color:var(--gold)}
+  .btn.dim-btn:hover{background:rgba(240,192,96,.28);box-shadow:0 0 20px rgba(240,192,96,.25)}
+  .btn.dim-btn.active{background:rgba(240,192,96,.3);box-shadow:0 0 20px rgba(240,192,96,.4)}
   #legend{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:10;background:var(--panel-bg);border:1px solid var(--border);border-radius:16px;padding:20px;backdrop-filter:blur(16px);display:flex;flex-direction:column;gap:6px;min-width:220px}
   #legend h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.5);margin-bottom:6px}
   .legend-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;cursor:pointer;transition:all .2s;font-size:.82rem;color:#bbb;border:1px solid transparent}
@@ -53,6 +56,7 @@
   <div class="btn-group">
     <button class="btn active" id="btn-exploded" onclick="window.setView('exploded')">💥 分解视图</button>
     <button class="btn" id="btn-stacked" onclick="window.setView('stacked')">📐 堆叠视图</button>
+    <button class="btn dim-btn" id="btn-dims" onclick="window.toggleDims()" style="opacity:0.4;pointer-events:none">📏 尺寸标注</button>
     <button class="btn switch-btn" id="btn-switch" onclick="window.toggleSwitch()">⚡ 开关变色</button>
     <button class="btn" id="btn-reset" onclick="window.resetCamera()">🔄 重置视角</button>
   </div>
@@ -62,8 +66,9 @@
   <button class="close-btn" onclick="window.closeDetail()">✕</button>
   <h2 id="detail-title"></h2><div class="eng" id="detail-eng"></div><p id="detail-desc"></p><div id="detail-materials"></div>
 </div>
-<div id="switch-label-bar"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle" id="status-dot"></span><span id="status-text">凝胶层：透明</span></div>
+<div id="switch-label-bar"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle" id="status-dot"></span><span id="status-text">凝胶层：透明 (0档)</span></div>
 <div id="hint">🖱 拖动旋转 &nbsp;|&nbsp; 滚轮缩放 &nbsp;|&nbsp; 右键平移 &nbsp;|&nbsp; 点击器件层或开关</div>
+
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
@@ -74,46 +79,43 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // ═══════════════════════════════════════════════
 //  DIMENSIONS (cm) — scale factor 0.3 → 3D units
 // ═══════════════════════════════════════════════
-const S  = 0.3;                       // cm → unit
+const S  = 0.3;
 const sc = v => v * S;
 
-// Glass (ITO conductive glass)
-const GLASS_SIDE   = sc(10);           // 10×10 cm
-const GLASS_THICK  = sc(0.35);         // 3.5 mm each
+// Glass (ITO conductive glass) — 10×10 cm
+const GLASS_SIDE   = sc(10);
+const GLASS_THICK  = sc(0.35);
 const GEL_SIDE     = sc(10);
-const GEL_THICK    = sc(0.5);          // 5 mm gel
-const DEVICE_THICK = GLASS_THICK*2 + GEL_THICK; // ~1.2 cm total
+const GEL_THICK    = sc(0.5);
+const DEVICE_THICK = GLASS_THICK*2 + GEL_THICK;
 
-// Resin frame
-const FRAME_OUTER  = sc(11);           // outer 11×11 cm
-const FRAME_BAR    = sc(0.5);          // bar width 0.5 cm
+// Resin frame — 11 cm outer
+const FRAME_OUTER  = sc(11);
+const FRAME_BAR    = sc(0.5);
 
-// Base (resin platform)
-const BASE_L = sc(15);                 // 15 cm long
-const BASE_W = sc(6);                  // 6 cm wide
-const BASE_H = sc(1.0);                // 1 cm tall
+// Base — 15×6 cm, 2 cm thick (to fully enclose batteries)
+const BASE_L = sc(15);
+const BASE_W = sc(6);
+const BASE_H = sc(2.0);
 
-// Battery compartment
-const BATT_L = sc(6.5);                // 6.5 cm
-const BATT_W = sc(5.0);                // 5.0 cm
-const BATT_D = sc(1.5);                // depth
+// Battery compartment — 6.5×5×1.6 cm (fully inside base)
+const BATT_L = sc(6.5);
+const BATT_W = sc(5.0);
+const BATT_D = sc(1.65);  // just enough for AA (1.4cm) + walls
 
-// Switch
-const SW_BODY_W = sc(1.3);              // body: 13×8×7 mm
-const SW_BODY_H = sc(0.7);
-const SW_BODY_D = sc(0.8);
-const SW_LEVER_R = sc(0.15);            // lever radius
-const SW_LEVER_H = sc(1.0);             // lever height
-const SW_PIN_R   = sc(0.06);            // pin radius
-const SW_PIN_H   = sc(0.35);            // pin length
+// AA battery — Ø1.4 cm × 5.0 cm
+const AA_R = sc(0.7);
+const AA_L = sc(5.0);
 
-// AA battery
-const AA_R    = sc(0.7);               // radius ~7 mm
-const AA_L    = sc(5.0);               // length ~5 cm
+// Rocker switch dimensions
+const RSW_W = sc(2.2);   // length
+const RSW_D = sc(1.3);   // width
+const RSW_H = sc(0.9);   // body height
+const RSW_ROCKER_H = sc(0.45); // rocker visible height above body
 
-// ═══════════════════════════════════════════════
+// ═══════════════════════
 //  LAYER DATA
-// ═══════════════════════════════════════════════
+// ═══════════════════════
 const layers = [
   {
     id:'ito-glass-top', num:1, name:'ITO 透明导电玻璃（上）', shortName:'ITO导电玻璃（上）',
@@ -125,7 +127,7 @@ const layers = [
   {
     id:'gel-layer', num:2, name:'凝胶变色层', shortName:'凝胶变色层',
     eng:'Gel Electrochromic Composite Layer',
-    desc:'器件核心——电致变色材料 (WO₃)、电解质 (LiClO₄/PC) 与离子存储材料 (NiO) 复合而成的一体化凝胶。施加+3V电压 → Li⁺注入 → 紫罗兰色着色；施加-3V → 恢复透明。双稳态，断电后颜色保持。',
+    desc:'器件核心——电致变色材料 (WO₃)、电解质 (LiClO₄/PC) 与离子存储材料 (NiO) 复合而成的一体化凝胶。船型开关拨至 1 档 → +3V 电压 → Li⁺注入 → 紫罗兰色着色；拨回 0 档 → -3V → 恢复透明。双稳态，断电后颜色保持。',
     materials:['WO₃/PEDOT:PSS 着色剂','LiClO₄/PC 电解质','NiO/CeO₂ 离子存储','PMMA 凝胶基质'],
     color:0xe8dfd0, colorOn:0x7b5ea7, opacity:0.58, thickness:GEL_THICK, metalness:0.0, roughness:0.55, isGel:true
   },
@@ -138,9 +140,9 @@ const layers = [
   },
 ];
 
-// ═══════════════════════════════════════════════
+// ═══════════════════════
 //  THREE.JS SETUP
-// ═══════════════════════════════════════════════
+// ═══════════════════════
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a18);
@@ -182,15 +184,15 @@ pGeo.setAttribute('position',new THREE.BufferAttribute(pArr,3));
 const pts = new THREE.Points(pGeo,new THREE.PointsMaterial({size:0.02,color:0x4488cc,transparent:true,opacity:0.45,blending:THREE.AdditiveBlending,depthWrite:false}));
 scene.add(pts);
 
-// ═══════════════════════════════════════════════
-//  BUILD: Device Core (flat — layers stack in Y)
-// ═══════════════════════════════════════════════
+// ═══════════════════════
+//  BUILD DEVICE
+// ═══════════════════════
 const world = new THREE.Group(); scene.add(world);
-const coreGroup = new THREE.Group(); world.add(coreGroup);   // layers + frame — rotated in stacked view
-const baseGroup = new THREE.Group(); world.add(baseGroup);    // base — always horizontal
-const annotGroup = new THREE.Group(); world.add(annotGroup);  // dimension annotations
+const coreGroup = new THREE.Group(); world.add(coreGroup);
+const baseGroup = new THREE.Group(); world.add(baseGroup);
+const annotGroup = new THREE.Group(); world.add(annotGroup);
 
-// ── Core layers (BoxGeometry(wide, tall=thickness, deep) → face in XZ plane) ──
+// ── Core layers ──
 const layerMeshes = [];
 layers.forEach((layer, idx) => {
   const geo = new THREE.BoxGeometry(GLASS_SIDE, layer.thickness, GLASS_SIDE, 2,1,2);
@@ -202,34 +204,26 @@ layers.forEach((layer, idx) => {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow=true; mesh.receiveShadow=true;
   mesh.userData={layerIndex:idx, layerData:layer};
-  // Edge wire
   const eg = new THREE.EdgesGeometry(geo);
   mesh.add(new THREE.LineSegments(eg, new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.1,depthTest:true})));
   layerMeshes.push(mesh);
   coreGroup.add(mesh);
 });
 
-// ── Resin Frame (4 bars around glass; only visible stacked) ──
+// ── Resin Frame ──
 const frameGroup = new THREE.Group(); coreGroup.add(frameGroup);
 const frameMat = new THREE.MeshStandardMaterial({color:0x1a1a1c, metalness:0.04, roughness:0.72});
-const hf = FRAME_OUTER/2;
 const hg = GLASS_SIDE/2;
-const fbx = hg + FRAME_BAR/2;
-const fbz = hg + FRAME_BAR/2;
+const fbx = hg + FRAME_BAR/2, fbz = hg + FRAME_BAR/2;
+function addFrameBar(w,h,d,x,y,z){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),frameMat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;frameGroup.add(m);}
+addFrameBar(FRAME_OUTER,DEVICE_THICK,FRAME_BAR,0,0, fbz);
+addFrameBar(FRAME_OUTER,DEVICE_THICK,FRAME_BAR,0,0,-fbz);
+addFrameBar(FRAME_BAR,  DEVICE_THICK,GLASS_SIDE, fbx,0,0);
+addFrameBar(FRAME_BAR,  DEVICE_THICK,GLASS_SIDE,-fbx,0,0);
 
-function addFrameBar(w, h, d, x, y, z) {
-  const g = new THREE.BoxGeometry(w, h, d);
-  const m = new THREE.Mesh(g, frameMat);
-  m.position.set(x, y, z); m.castShadow=true; m.receiveShadow=true;
-  frameGroup.add(m);
-}
-// 4 bars: front/back (full outer width) + left/right (between front & back)
-addFrameBar(FRAME_OUTER, DEVICE_THICK, FRAME_BAR, 0, 0,  fbz);         // front
-addFrameBar(FRAME_OUTER, DEVICE_THICK, FRAME_BAR, 0, 0, -fbz);         // back
-addFrameBar(FRAME_BAR,   DEVICE_THICK, GLASS_SIDE,  fbx, 0, 0);        // right
-addFrameBar(FRAME_BAR,   DEVICE_THICK, GLASS_SIDE, -fbx, 0, 0);        // left
-
-// ── Resin Base (always horizontal; separate group) ──
+// ═══════════════════════
+//  RESIN BASE (15×6×2 cm, thick enough to enclose batteries)
+// ═══════════════════════
 const baseBodyGeo = new THREE.BoxGeometry(BASE_L, BASE_H, BASE_W, 1,1,1);
 const baseBodyMat = new THREE.MeshStandardMaterial({color:0x1c1c1e, metalness:0.06, roughness:0.68});
 const baseBody = new THREE.Mesh(baseBodyGeo, baseBodyMat);
@@ -237,601 +231,343 @@ baseBody.castShadow=true; baseBody.receiveShadow=true; baseBody.userData={isBase
 baseBody.position.y = BASE_H/2;
 baseGroup.add(baseBody);
 
-// Base top plate (slightly recessed look)
+// Base top plate
 const plateGeo = new THREE.BoxGeometry(BASE_L-0.3, 0.08, BASE_W-0.3, 1,1,1);
-const plateMat = new THREE.MeshStandardMaterial({color:0x242426, metalness:0.12, roughness:0.5});
-const plate = new THREE.Mesh(plateGeo, plateMat);
+const plate = new THREE.Mesh(plateGeo, new THREE.MeshStandardMaterial({color:0x242426, metalness:0.12, roughness:0.5}));
 plate.position.y = BASE_H/2 + 0.04; plate.receiveShadow=true;
 baseGroup.add(plate);
 
-// ── Switch (3-position 6-pin toggle) on base ──
-const switchGroup = new THREE.Group(); switchGroup.userData={isSwitch:true};
-switchGroup.position.set(BASE_L*0.28, BASE_H + 0.01, BASE_W*0.28);
-baseGroup.add(switchGroup);
-
-// Switch body
-const swBodyGeo = new THREE.BoxGeometry(SW_BODY_W, SW_BODY_H, SW_BODY_D);
-const swBodyMat = new THREE.MeshStandardMaterial({color:0x3a3a3e, metalness:0.5, roughness:0.3});
-const swBody = new THREE.Mesh(swBodyGeo, swBodyMat);
-swBody.position.y = SW_BODY_H/2; swBody.castShadow=true;
-switchGroup.add(swBody);
-
-// Switch threaded collar
-const collarGeo = new THREE.CylinderGeometry(SW_BODY_D*0.3, SW_BODY_D*0.35, SW_BODY_H*0.25, 24);
-const collar = new THREE.Mesh(collarGeo, new THREE.MeshStandardMaterial({color:0x888888, metalness:0.8, roughness:0.2}));
-collar.position.y = SW_BODY_H + SW_BODY_H*0.125;
-switchGroup.add(collar);
-
-// Toggle lever group
-const togglePivot = new THREE.Group();
-togglePivot.position.y = SW_BODY_H + SW_BODY_H*0.2;
-switchGroup.add(togglePivot);
-
-const leverGeo = new THREE.CylinderGeometry(SW_LEVER_R*0.7, SW_LEVER_R, SW_LEVER_H, 16);
-const leverMat = new THREE.MeshStandardMaterial({color:0xcccccc, metalness:0.8, roughness:0.2});
-const lever = new THREE.Mesh(leverGeo, leverMat);
-lever.position.y = SW_LEVER_H/2; lever.castShadow=true;
-togglePivot.add(lever);
-
-// Lever ball tip
-const tipGeo = new THREE.SphereGeometry(SW_LEVER_R*1.4, 16, 8);
-const tip = new THREE.Mesh(tipGeo, leverMat);
-tip.position.y = SW_LEVER_H;
-togglePivot.add(tip);
-
-// 6 pins (2 rows of 3)
-const pinMat = new THREE.MeshStandardMaterial({color:0x999999, metalness:0.9, roughness:0.2});
-for(let row=0; row<2; row++){
-  for(let col=0; col<3; col++){
-    const pinGeo = new THREE.CylinderGeometry(SW_PIN_R, SW_PIN_R*0.8, SW_PIN_H, 8);
-    const pin = new THREE.Mesh(pinGeo, pinMat);
-    pin.position.set(
-      (col-1)*SW_BODY_W*0.25,
-      -SW_PIN_H/2,
-      (row-0.5)*SW_BODY_D*0.45
-    );
-    switchGroup.add(pin);
-  }
-}
-
-// LED indicator on switch
-const ledGeo = new THREE.SphereGeometry(0.015, 8, 8);
-const ledOffMat = new THREE.MeshStandardMaterial({color:0x442222, emissive:0x220000, emissiveIntensity:0.5, roughness:0.3});
-const ledOnMat = new THREE.MeshStandardMaterial({color:0x9966dd, emissive:0x6633aa, emissiveIntensity:2.5, roughness:0.3});
-const ledDot = new THREE.Mesh(ledGeo, ledOffMat);
-ledDot.position.set(SW_BODY_W*0.32, SW_BODY_H*0.5, 0);
-switchGroup.add(ledDot);
-
-// ── Battery compartment & AA batteries (bottom of base) ──
+// ═══════════════════════
+//  BATTERY COMPARTMENT — fully inside base, flush with bottom
+// ═══════════════════════
 const battGroup = new THREE.Group(); baseGroup.add(battGroup);
 
-// Compartment recess
+// The bottom face of the base is at y=0. Battery compartment is a recess cut into
+// the base from the bottom, extending upward. We represent it as a dark box inside.
+const battFloorY = 0.04;     // thin floor at bottom of base
+const battCeilY = BATT_D;    // top of compartment
+
+// Compartment housing (dark recessed box)
 const compGeo = new THREE.BoxGeometry(BATT_L, BATT_D, BATT_W);
-const compMat = new THREE.MeshStandardMaterial({color:0x111114, roughness:0.9, metalness:0.02});
+const compMat = new THREE.MeshStandardMaterial({color:0x0d0d10, roughness:0.9, metalness:0.02});
 const comp = new THREE.Mesh(compGeo, compMat);
-comp.position.y = -BASE_H/2 - BATT_D/2 + 0.02;
+comp.position.set(0, battFloorY + BATT_D/2, 0);
 battGroup.add(comp);
 
-// Compartment inner walls (slightly lighter)
-const innerMat = new THREE.MeshStandardMaterial({color:0x1a1a1d, roughness:0.8, metalness:0.04});
-const innerGeo = new THREE.BoxGeometry(BATT_L-0.15, BATT_D-0.02, BATT_W-0.15);
-const inner = new THREE.Mesh(innerGeo, innerMat);
-inner.position.y = -BASE_H/2 - BATT_D/2 + 0.04;
+// Inner walls
+const innerGeo = new THREE.BoxGeometry(BATT_L-0.12, BATT_D-0.04, BATT_W-0.12);
+const inner = new THREE.Mesh(innerGeo, new THREE.MeshStandardMaterial({color:0x151518, roughness:0.85, metalness:0.04}));
+inner.position.set(0, battFloorY + BATT_D/2 + 0.01, 0);
 battGroup.add(inner);
 
-// AA batteries (2 side by side)
+// AA batteries — 2 side by side, fully inside compartment
 function createAABattery(x, z) {
   const g = new THREE.Group();
-  // main body (silver)
-  const bodyGeo = new THREE.CylinderGeometry(AA_R, AA_R, AA_L*0.78, 24);
+  const bodyGeo = new THREE.CylinderGeometry(AA_R, AA_R, AA_L, 24);
   const bodyMat = new THREE.MeshStandardMaterial({color:0xcccccc, metalness:0.7, roughness:0.25});
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.rotation.z = Math.PI/2;
-  body.position.set(AA_L*0.11, 0, 0);
+  body.position.set(0, 0, 0);
   g.add(body);
-  // positive cap (brass)
-  const capGeo = new THREE.CylinderGeometry(AA_R*0.75, AA_R, AA_L*0.12, 24);
-  const capMat = new THREE.MeshStandardMaterial({color:0xd4a840, metalness:0.8, roughness:0.2});
-  const cap = new THREE.Mesh(capGeo, capMat);
+  // Positive cap (brass)
+  const capGeo = new THREE.CylinderGeometry(AA_R*0.7, AA_R, AA_L*0.1, 24);
+  const cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({color:0xd4a840, metalness:0.8, roughness:0.2}));
   cap.rotation.z = Math.PI/2;
-  cap.position.set(AA_L/2 - AA_L*0.06, 0, 0);
+  cap.position.set(AA_L/2 - AA_L*0.05, 0, 0);
   g.add(cap);
-  // negative end
-  const negGeo = new THREE.CylinderGeometry(AA_R, AA_R*0.85, AA_L*0.1, 24);
+  // Negative nub
+  const negGeo = new THREE.CylinderGeometry(AA_R*0.55, AA_R*0.8, AA_L*0.08, 24);
   const neg = new THREE.Mesh(negGeo, bodyMat);
   neg.rotation.z = Math.PI/2;
-  neg.position.set(-AA_L/2 + AA_L*0.05, 0, 0);
+  neg.position.set(-AA_L/2 + AA_L*0.04, 0, 0);
   g.add(neg);
-  g.position.set(x, -BASE_H/2 - BATT_D/2 + AA_R + 0.03, z);
+  g.position.set(x, battFloorY + BATT_D/2, z);
   return g;
 }
-const batt1 = createAABattery(-BATT_L*0.18, -AA_R*1.2);
-const batt2 = createAABattery(-BATT_L*0.18,  AA_R*1.2);
+const batt1 = createAABattery(0, -AA_R*1.25);
+const batt2 = createAABattery(0,  AA_R*1.25);
 battGroup.add(batt1); battGroup.add(batt2);
 
-// "+ -" markings in compartment
+// "+" and "−" polarity markings inside compartment
 function makeBattMarking(text, x, z) {
   const c = document.createElement('canvas'); c.width=128; c.height=64;
   const ctx=c.getContext('2d'); ctx.fillStyle='#ffcc88'; ctx.font='bold 28px monospace';
   ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,64,32);
   const tex = new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter;
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
-  sp.position.set(x, -BASE_H/2 - BATT_D/2 + 0.04, z); sp.scale.set(0.8,0.4,1);
+  sp.position.set(x, battFloorY + BATT_D + 0.04, z); sp.scale.set(0.8,0.4,1);
   return sp;
 }
-battGroup.add(makeBattMarking('+', -BATT_L*0.18 + AA_L/2+0.2, -AA_R*1.2));
-battGroup.add(makeBattMarking('−', -BATT_L*0.18 - AA_L/2-0.2, -AA_R*1.2));
-battGroup.add(makeBattMarking('+', -BATT_L*0.18 + AA_L/2+0.2,  AA_R*1.2));
-battGroup.add(makeBattMarking('−', -BATT_L*0.18 - AA_L/2-0.2,  AA_R*1.2));
+battGroup.add(makeBattMarking('+',  AA_L/2 + 0.25, -AA_R*1.25));
+battGroup.add(makeBattMarking('−', -AA_L/2 - 0.25, -AA_R*1.25));
+battGroup.add(makeBattMarking('+',  AA_L/2 + 0.25,  AA_R*1.25));
+battGroup.add(makeBattMarking('−', -AA_L/2 - 0.25,  AA_R*1.25));
 
-// ── Exploded-view dashed lines ──
+// ═══════════════════════
+//  ROCKER SWITCH (船型开关) — 2 positions (0 / 1)
+//  Body: rectangular block. Rocker: curved top that tilts.
+// ═══════════════════════
+const switchGroup = new THREE.Group(); switchGroup.userData={isSwitch:true};
+switchGroup.position.set(BASE_L*0.25, BASE_H, BASE_W*0.28);
+baseGroup.add(switchGroup);
+
+// Switch body (sits flush on base top)
+const rswBodyGeo = new THREE.BoxGeometry(RSW_W, RSW_H, RSW_D);
+const rswBody = new THREE.Mesh(rswBodyGeo, new THREE.MeshStandardMaterial({color:0x3a3a3e, metalness:0.5, roughness:0.3}));
+rswBody.position.y = RSW_H/2; rswBody.castShadow=true;
+switchGroup.add(rswBody);
+
+// Rocker — curved top, tilts around its center X axis
+const rockerPivot = new THREE.Group();
+rockerPivot.position.y = RSW_H;
+switchGroup.add(rockerPivot);
+
+// Rocker body: a box with rounded top, built as a box + cylindrical cap
+const rockerBodyGeo = new THREE.BoxGeometry(RSW_W*0.85, RSW_ROCKER_H, RSW_D*0.85);
+const rockerMat = new THREE.MeshStandardMaterial({color:0x222226, metalness:0.4, roughness:0.35});
+const rockerBody = new THREE.Mesh(rockerBodyGeo, rockerMat);
+rockerBody.position.y = RSW_ROCKER_H/2; rockerBody.castShadow=true;
+rockerPivot.add(rockerBody);
+
+// Curved rocker top (half-cylinder to give it the "boat" shape)
+const rockerCapGeo = new THREE.CylinderGeometry(RSW_D*0.35, RSW_D*0.35, RSW_W*0.8, 20);
+const rockerCap = new THREE.Mesh(rockerCapGeo, rockerMat);
+rockerCap.rotation.x = Math.PI/2;
+rockerCap.position.y = RSW_ROCKER_H;
+rockerPivot.add(rockerCap);
+
+// "0" and "1" markings on switch body (side labels)
+function makeSwitchLabel(text, x, y, z, size) {
+  const c = document.createElement('canvas'); c.width=64; c.height=64;
+  const ctx=c.getContext('2d'); ctx.fillStyle='#aaaaaa'; ctx.font='bold 36px "Segoe UI",sans-serif';
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,32,32);
+  const tex = new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
+  sp.position.set(x, y, z); sp.scale.set(size||0.3, size||0.3, 1);
+  return sp;
+}
+switchGroup.add(makeSwitchLabel('0', -RSW_W*0.32, RSW_H+RSW_ROCKER_H+0.15, RSW_D*0.55, 0.25));
+switchGroup.add(makeSwitchLabel('1',  RSW_W*0.32, RSW_H+RSW_ROCKER_H+0.15, RSW_D*0.55, 0.25));
+
+// Indicator line on rocker (shows which side is pressed)
+const indicatorGeo = new THREE.BoxGeometry(RSW_W*0.15, 0.01, RSW_D*0.4);
+const indicatorMat = new THREE.MeshStandardMaterial({color:0xffffff, emissive:0xffffff, emissiveIntensity:0.6, roughness:0.3});
+const indicatorLine = new THREE.Mesh(indicatorGeo, indicatorMat);
+indicatorLine.position.y = RSW_ROCKER_H + RSW_D*0.35 + 0.02;
+rockerPivot.add(indicatorLine);
+
+// ═══════════════════════
+//  DASHED LINES (exploded view)
+// ═══════════════════════
 const dashGroup = new THREE.Group(); coreGroup.add(dashGroup);
-function makeDash(y1, y2) {
-  const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,y1,0),new THREE.Vector3(0,y2,0)]);
-  const mat = new THREE.LineDashedMaterial({color:0x667799,dashSize:0.2,gapSize:0.14,transparent:true,opacity:0.5});
-  const l = new THREE.Line(geo, mat); l.computeLineDistances(); return l;
-}
-function updateDashLines(show) {
-  while(dashGroup.children.length>0) dashGroup.remove(dashGroup.children[0]);
-  if(!show) return;
-  for(let i=0; i<layerMeshes.length-1; i++){
-    const a=layerMeshes[i], b=layerMeshes[i+1];
-    const y1=a.position.y+layers[i].thickness/2, y2=b.position.y-layers[i+1].thickness/2;
-    const offX=GLASS_SIDE*0.42, offZ=GLASS_SIDE*0.35;
-    [1,-1].forEach(s=>{const l=makeDash(y1,y2); l.position.set(s*offX,0,s*offZ); dashGroup.add(l);});
-  }
-}
+function makeDash(y1,y2){const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,y1,0),new THREE.Vector3(0,y2,0)]);const l=new THREE.Line(geo,new THREE.LineDashedMaterial({color:0x667799,dashSize:0.2,gapSize:0.14,transparent:true,opacity:0.5}));l.computeLineDistances();return l;}
+function updateDashLines(show){while(dashGroup.children.length>0)dashGroup.remove(dashGroup.children[0]);if(!show)return;for(let i=0;i<layerMeshes.length-1;i++){const a=layerMeshes[i],b=layerMeshes[i+1];const y1=a.position.y+layers[i].thickness/2,y2=b.position.y-layers[i+1].thickness/2,ox=GLASS_SIDE*0.42,oz=GLASS_SIDE*0.35;[1,-1].forEach(s=>{const l=makeDash(y1,y2);l.position.set(s*ox,0,s*oz);dashGroup.add(l);});}}
 
-// ── Layer labels (sprites, exploded only) ──
-const labelSprites = [];
-function makeLabelSprite(text, pos) {
-  const c=document.createElement('canvas'); c.width=512; c.height=96;
-  const ctx=c.getContext('2d');
-  ctx.fillStyle='rgba(10,10,24,0.85)';
-  ctx.beginPath(); ctx.roundRect(30,15,452,66,18); ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.roundRect(30,15,452,66,18); ctx.stroke();
-  ctx.fillStyle='#fff'; ctx.font='bold 28px "PingFang SC","Microsoft YaHei",sans-serif';
-  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,256,48);
-  const tex=new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter;
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
-  sp.position.copy(pos); sp.scale.set(2.4,0.45,1); return sp;
-}
-function updateLabels(show) {
-  labelSprites.forEach(s=>coreGroup.remove(s)); labelSprites.length=0;
-  if(!show) return;
-  layerMeshes.forEach((m,i)=>{
-    const sp=makeLabelSprite(layers[i].name, new THREE.Vector3(GLASS_SIDE/2+1.1, m.position.y, 0));
-    sp.userData={layerIndex:i}; coreGroup.add(sp); labelSprites.push(sp);
-  });
-}
+// ═══════════════════════
+//  LABELS (exploded view)
+// ═══════════════════════
+const labelSprites=[];
+function makeLabelSprite(text,pos){const c=document.createElement('canvas');c.width=512;c.height=96;const ctx=c.getContext('2d');ctx.fillStyle='rgba(10,10,24,0.85)';ctx.beginPath();ctx.roundRect(30,15,452,66,18);ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(30,15,452,66,18);ctx.stroke();ctx.fillStyle='#fff';ctx.font='bold 28px "PingFang SC","Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,256,48);const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));sp.position.copy(pos);sp.scale.set(2.4,0.45,1);return sp;}
+function updateLabels(show){labelSprites.forEach(s=>coreGroup.remove(s));labelSprites.length=0;if(!show)return;layerMeshes.forEach((m,i)=>{const sp=makeLabelSprite(layers[i].name,new THREE.Vector3(GLASS_SIDE/2+1.1,m.position.y,0));sp.userData={layerIndex:i};coreGroup.add(sp);labelSprites.push(sp);});}
 
-// ═══════════════════════════════════════════════
-//  DIMENSION ANNOTATIONS (stacked-view only)
-// ═══════════════════════════════════════════════
-const dimLines = []; const dimSprites = [];
-
-function makeDimText(text, position) {
-  const c=document.createElement('canvas'); c.width=256; c.height=64;
-  const ctx=c.getContext('2d');
-  ctx.fillStyle='#ffcc88'; ctx.font='bold 26px "PingFang SC","Segoe UI",sans-serif';
-  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,128,32);
-  const tex=new THREE.CanvasTexture(c); tex.minFilter=THREE.LinearFilter;
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));
-  sp.position.copy(position); sp.scale.set(1.5,0.375,1);
-  return sp;
-}
-
-function makeDimLine(x1,y1,z1, x2,y2,z2, color=0xffcc88) {
-  const geo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(x1,y1,z1), new THREE.Vector3(x2,y2,z2)
-  ]);
-  return new THREE.Line(geo, new THREE.LineBasicMaterial({color,transparent:true,opacity:0.7,depthTest:true}));
-}
-
-function clearAnnotations() {
-  dimLines.forEach(l=>annotGroup.remove(l)); dimLines.length=0;
-  dimSprites.forEach(s=>annotGroup.remove(s)); dimSprites.length=0;
-}
+// ═══════════════════════
+//  DIMENSION ANNOTATIONS (toggleable)
+// ═══════════════════════
+const dimLines=[]; const dimSprites=[];
+function makeDimText(text,position){const c=document.createElement('canvas');c.width=256;c.height=64;const ctx=c.getContext('2d');ctx.fillStyle='#ffcc88';ctx.font='bold 26px "PingFang SC","Segoe UI",sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,128,32);const tex=new THREE.CanvasTexture(c);tex.minFilter=THREE.LinearFilter;const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false}));sp.position.copy(position);sp.scale.set(1.5,0.375,1);return sp;}
+function makeDimLine(x1,y1,z1,x2,y2,z2){return new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1,y1,z1),new THREE.Vector3(x2,y2,z2)]),new THREE.LineBasicMaterial({color:0xffcc88,transparent:true,opacity:0.7,depthTest:true}));}
+function clearAnnotations(){dimLines.forEach(l=>annotGroup.remove(l));dimLines.length=0;dimSprites.forEach(s=>annotGroup.remove(s));dimSprites.length=0;}
 
 function buildAnnotations() {
   clearAnnotations();
-  // All annotations in WORLD space for the stacked (picture-frame) orientation.
-  // After rotation -90° around X: X stays X, Y→Z, Z→-Y.
-  // So the frame face (originally XZ) is now in XY plane, standing vertically.
-  // Frame bottom is at Y ≈ -FRAME_OUTER/2, base at Y ≈ -FRAME_OUTER/2 - BASE_H/2
+  if(!showAnnotations) return; // ← only show when toggled on
 
-  const fb = -FRAME_OUTER/2;           // frame bottom Y in world
-  const ft =  FRAME_OUTER/2;           // frame top Y in world
-  const fl = -FRAME_OUTER/2;           // frame left X
-  const fr =  FRAME_OUTER/2;           // frame right X
-  const gb = -GLASS_SIDE/2;            // glass bottom
-  const gt =  GLASS_SIDE/2;            // glass top
-  const gl = -GLASS_SIDE/2;            // glass left
+  const fb=-FRAME_OUTER/2, ft=FRAME_OUTER/2, fl=-FRAME_OUTER/2, fr=FRAME_OUTER/2;
+  const gb=-GLASS_SIDE/2, gt=GLASS_SIDE/2, gl=-GLASS_SIDE/2;
+  const baseTop = fb - 0.06;
+  const baseBot = baseTop - BASE_H;
+  const baseL=-BASE_L/2, baseR=BASE_L/2, baseFr=BASE_W/2, baseBk=-BASE_W/2;
 
-  const baseTop = fb - 0.06;           // base starts just below frame
-  const baseBot = baseTop - BASE_H;     // base bottom
-  const baseL = -BASE_L/2;
-  const baseR =  BASE_L/2;
-  const baseFr =  BASE_W/2;            // base front (Z)
-  const baseBk = -BASE_W/2;            // base back (Z)
-
-  // Helper: world-space dim line + text
-  function dim(x1,y1,z1, x2,y2,z2, text, tx,ty,tz) {
-    // line
-    const l = makeDimLine(x1,y1,z1, x2,y2,z2);
-    annotGroup.add(l); dimLines.push(l);
-    // tick marks
-    const tickLen = 0.15;
-    const dx=x2-x1, dy=y2-y1, dz=z2-z1; const len=Math.sqrt(dx*dx+dy*dy+dz*dz);
-    const nx=dx/len, ny=dy/len, nz=dz/len;
-    // perpendicular in XY plane
-    const px=-ny, py=nx, pz=0;
-    [0,1].forEach(s=>{
-      const px3=s?x2:x1, py3=s?y2:y1, pz3=s?z2:z1;
-      const tGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(px3-px*tickLen, py3-py*tickLen, pz3),
-        new THREE.Vector3(px3+px*tickLen, py3+py*tickLen, pz3)
-      ]);
-      const tLine = new THREE.Line(tGeo, new THREE.LineBasicMaterial({color:0xffcc88,transparent:true,opacity:0.7,depthTest:true}));
-      annotGroup.add(tLine); dimLines.push(tLine);
-    });
-    // text sprite
-    const sp = makeDimText(text, new THREE.Vector3(tx||((x1+x2)/2), ty||((y1+y2)/2), tz||((z1+z2)/2)));
-    annotGroup.add(sp); dimSprites.push(sp);
+  function dim(x1,y1,z1,x2,y2,z2,text,tx,ty,tz){
+    const l=makeDimLine(x1,y1,z1,x2,y2,z2);annotGroup.add(l);dimLines.push(l);
+    const tickLen=0.15;const dx=x2-x1,dy=y2-y1,dz=z2-z1;const len=Math.sqrt(dx*dx+dy*dy+dz*dz);const nx=dx/len,ny=dy/len,nz=dz/len;const px=-ny,py=nx;
+    [0,1].forEach(s=>{const px3=s?x2:x1,py3=s?y2:y1,pz3=s?z2:z1;const tLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(px3-px*tickLen,py3-py*tickLen,pz3),new THREE.Vector3(px3+px*tickLen,py3+py*tickLen,pz3)]),new THREE.LineBasicMaterial({color:0xffcc88,transparent:true,opacity:0.7,depthTest:true}));annotGroup.add(tLine);dimLines.push(tLine);});
+    const sp=makeDimText(text,new THREE.Vector3(tx||((x1+x2)/2),ty||((y1+y2)/2),tz||((z1+z2)/2)));annotGroup.add(sp);dimSprites.push(sp);
   }
 
-  // 1) Glass width: "10 cm" — along glass bottom edge
-  dim(gl, gb-0.15, 0.03,  gl+GLASS_SIDE, gb-0.15, 0.03, '10 cm');
-
-  // 2) Glass height: "10 cm" — along glass left edge
-  dim(gl-0.15, gb, 0.03,  gl-0.15, gt, 0.03, '10 cm');
-
-  // 3) Frame outer: "11 cm" — along frame bottom
-  dim(fl, fb-0.4, 0.03, fr, fb-0.4, 0.03, '11 cm (外框)');
-
-  // 4) Base length: "15 cm" — along base front
-  dim(baseL, baseBot-0.15, baseFr+0.1, baseR, baseBot-0.15, baseFr+0.1, '15 cm');
-
-  // 5) Base width: "6 cm" — along base right side
-  dim(baseR+0.2, baseBot, baseBk, baseR+0.2, baseBot, baseFr, '6 cm');
-
-  // 6) Battery compartment label — on base bottom
-  const battY = baseBot - BATT_D - 0.25;
-  const spBat = makeDimText('电池槽 6.5×5 cm', new THREE.Vector3(0, battY, 0));
-  spBat.scale.set(2.0, 0.5, 1);
-  annotGroup.add(spBat); dimSprites.push(spBat);
-
-  // 7) AA battery labels
-  const aay = baseBot - BATT_D/2 - 0.1;
-  [-AA_R*1.2, AA_R*1.2].forEach(bz=>{
-    const spAA = makeDimText('AA 1.5V', new THREE.Vector3(-BATT_L*0.18, aay, bz));
-    spAA.scale.set(1.0, 0.25, 1);
-    annotGroup.add(spAA); dimSprites.push(spAA);
-  });
+  // Glass 10×10
+  dim(gl,gb-0.15,0.03,gl+GLASS_SIDE,gb-0.15,0.03,'10 cm');
+  dim(gl-0.15,gb,0.03,gl-0.15,gt,0.03,'10 cm');
+  // Frame 11 cm
+  dim(fl,fb-0.4,0.03,fr,fb-0.4,0.03,'11 cm (外框)');
+  // Base 15×6
+  dim(baseL,baseBot-0.15,baseFr+0.1,baseR,baseBot-0.15,baseFr+0.1,'15 cm');
+  dim(baseR+0.2,baseBot,baseBk,baseR+0.2,baseBot,baseFr,'6 cm');
+  // Battery compartment label
+  const battY2 = 0 + 0.08; // base bottom is at y=0 in world when baseGroup positioned
+  const spBat=makeDimText('电池槽 6.5×5 cm',new THREE.Vector3(0,battY2,0));
+  spBat.scale.set(2.0,0.5,1);annotGroup.add(spBat);dimSprites.push(spBat);
+  // AA labels
+  const aay2=battFloorY+BATT_D/2;
+  [-AA_R*1.25,AA_R*1.25].forEach(bz=>{const spAA=makeDimText('AA 1.5V',new THREE.Vector3(0,aay2,bz));spAA.scale.set(1.0,0.25,1);annotGroup.add(spAA);dimSprites.push(spAA);});
 }
 
-// ═══════════════════════════════════════════════
-//  LAYOUT FUNCTIONS
-// ═══════════════════════════════════════════════
-let currentView = 'exploded';
-let switchOn = false;
+// ═══════════════════════
+//  LAYOUT
+// ═══════════════════════
+let currentView='exploded';
+let switchOn=false;         // rocker position: false=0档(透明), true=1档(着色)
+let showAnnotations=false;  // dimension toggle
 
-function layoutExploded() {
-  // Layers spread apart in Y; highest Y = top glass (layer 0)
-  const gap = 0.8;
-  const totalH = layers.reduce((s,l)=>s+l.thickness,0) + (layers.length-1)*gap;
-  // Layer 0 (top glass) at highest Y
-  let y = totalH/2;
-  for(let i=0; i<layerMeshes.length; i++){
-    y -= layers[i].thickness/2;
-    layerMeshes[i].position.y = y;
-    layerMeshes[i].rotation.x = 0;
-    y -= layers[i].thickness/2 + gap;
-  }
-  // Reset core rotation — flat
-  coreGroup.rotation.x = 0;
-  coreGroup.position.set(0,0,0);
-
-  // Hide frame & base
-  frameGroup.visible = false;
-  baseGroup.visible = false;
-  clearAnnotations();
+function layoutExploded(){
+  const gap=0.8;
+  const totalH=layers.reduce((s,l)=>s+l.thickness,0)+(layers.length-1)*gap;
+  let y=totalH/2;
+  for(let i=0;i<layerMeshes.length;i++){y-=layers[i].thickness/2;layerMeshes[i].position.y=y;layerMeshes[i].rotation.x=0;y-=layers[i].thickness/2+gap;}
+  coreGroup.rotation.x=0;coreGroup.position.set(0,0,0);
+  frameGroup.visible=false;baseGroup.visible=false;clearAnnotations();
   document.getElementById('switch-label-bar').classList.remove('visible');
-
-  updateDashLines(true);
-  updateLabels(true);
+  updateDashLines(true);updateLabels(true);
+  // Disable dims button in exploded view
+  const dimBtn=document.getElementById('btn-dims');
+  dimBtn.style.opacity='0.4';dimBtn.style.pointerEvents='none';
 }
 
-function layoutStacked() {
-  // Layers tight-stacked in coreGroup
-  let y = 0;
-  for(let i=0; i<layerMeshes.length; i++){
-    y += layers[i].thickness/2;
-    layerMeshes[i].position.y = y;
-    layerMeshes[i].rotation.x = 0;
-    y += layers[i].thickness/2;
-  }
-  const totalH = layers.reduce((s,l)=>s+l.thickness,0);
-  for(let i=0; i<layerMeshes.length; i++) layerMeshes[i].position.y -= totalH/2;
-
-  // Rotate core to stand upright (picture-frame orientation) — -90° around X
-  coreGroup.rotation.x = -Math.PI/2;
-  // After rotation: frame face in XY plane, center at origin in XY, Z ≈ 0
-  coreGroup.position.set(0, 0, 0);
-
-  // Base below the frame
-  // After rotation, frame bottom is at Y = -FRAME_OUTER/2 (world)
-  baseGroup.position.set(0, -FRAME_OUTER/2 - BASE_H/2 - 0.08, 0);
-  baseGroup.rotation.set(0,0,0); // stays horizontal
-  baseGroup.visible = true;
-
-  // Show frame
-  frameGroup.visible = true;
-
-  updateDashLines(false);
-  updateLabels(false);
-  buildAnnotations();
-  updateSwitchUI();
+function layoutStacked(){
+  let y=0;
+  for(let i=0;i<layerMeshes.length;i++){y+=layers[i].thickness/2;layerMeshes[i].position.y=y;layerMeshes[i].rotation.x=0;y+=layers[i].thickness/2;}
+  const totalH=layers.reduce((s,l)=>s+l.thickness,0);
+  for(let i=0;i<layerMeshes.length;i++)layerMeshes[i].position.y-=totalH/2;
+  coreGroup.rotation.x=-Math.PI/2;coreGroup.position.set(0,0,0);
+  // Base below frame
+  baseGroup.position.set(0,-FRAME_OUTER/2-BASE_H/2-0.06,0);
+  baseGroup.rotation.set(0,0,0);baseGroup.visible=true;
+  frameGroup.visible=true;
+  updateDashLines(false);updateLabels(false);
+  buildAnnotations();updateSwitchUI();
+  // Enable dims button
+  const dimBtn=document.getElementById('btn-dims');
+  dimBtn.style.opacity='1';dimBtn.style.pointerEvents='auto';
+  dimBtn.classList.toggle('active',showAnnotations);
 }
 
-function setView(view) {
-  currentView = view;
-  document.getElementById('btn-exploded').classList.toggle('active', view==='exploded');
-  document.getElementById('btn-stacked').classList.toggle('active', view==='stacked');
-  if(view==='exploded') layoutExploded();
-  else layoutStacked();
-  // Close detail when switching views
+function setView(view){
+  currentView=view;
+  document.getElementById('btn-exploded').classList.toggle('active',view==='exploded');
+  document.getElementById('btn-stacked').classList.toggle('active',view==='stacked');
+  if(view==='exploded')layoutExploded();else layoutStacked();
   closeDetail();
 }
 
-// ═══════════════════════════════════════════════
-//  SWITCH TOGGLE
-// ═══════════════════════════════════════════════
-function toggleSwitch() {
-  switchOn = !switchOn;
+// ═══════════════════════
+//  DIMENSION TOGGLE
+// ═══════════════════════
+function toggleDims(){
+  if(currentView!=='stacked')return;
+  showAnnotations=!showAnnotations;
+  document.getElementById('btn-dims').classList.toggle('active',showAnnotations);
+  buildAnnotations();
+}
+
+// ═══════════════════════
+//  ROCKER SWITCH — 0档(透明) / 1档(着色)
+// ═══════════════════════
+function toggleSwitch(){
+  switchOn=!switchOn;
   applyGelColor();
-  updateSwitchVisuals();
+  updateRockerVisual();
   updateSwitchUI();
-  const btn = document.getElementById('btn-switch');
-  btn.classList.toggle('active', switchOn);
-  btn.textContent = switchOn ? '⚡ 关 — 褪色' : '⚡ 开关变色';
+  const btn=document.getElementById('btn-switch');
+  btn.classList.toggle('active',switchOn);
+  btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';
 }
 
-function applyGelColor() {
-  const gel = layerMeshes[1];
-  const d = layers[1];
-  if(switchOn) {
-    gel.material.color.set(d.colorOn);
-    gel.material.opacity = 0.82;
-    gel.material.emissive = new THREE.Color(d.colorOn);
-    gel.material.emissiveIntensity = 0.3;
-  } else {
-    gel.material.color.set(d.color);
-    gel.material.opacity = d.opacity;
-    gel.material.emissive = new THREE.Color(0x000000);
-    gel.material.emissiveIntensity = 0;
-  }
+function applyGelColor(){
+  const gel=layerMeshes[1];
+  const d=layers[1];
+  if(switchOn){gel.material.color.set(d.colorOn);gel.material.opacity=0.82;gel.material.emissive=new THREE.Color(d.colorOn);gel.material.emissiveIntensity=0.3;}
+  else{gel.material.color.set(d.color);gel.material.opacity=d.opacity;gel.material.emissive=new THREE.Color(0x000000);gel.material.emissiveIntensity=0;}
 }
 
-function updateSwitchVisuals() {
-  togglePivot.rotation.x = switchOn ? -0.55 : 0.55;
-  if(switchOn) ledDot.material = ledOnMat.clone();
-  else ledDot.material = ledOffMat.clone();
+// Rocker visual: tilt the rocker forward/backward
+function updateRockerVisual(){
+  // 0档: rocker tilted so left side down, right side up  (rotation around X)
+  // 1档: rocker tilted so left side up, right side down
+  rockerPivot.rotation.z = switchOn ? -0.22 : 0.22;
 }
 
-function updateSwitchUI() {
-  const bar = document.getElementById('switch-label-bar');
-  const dot = document.getElementById('status-dot');
-  const txt = document.getElementById('status-text');
-  if(currentView==='stacked') {
+function updateSwitchUI(){
+  const bar=document.getElementById('switch-label-bar');
+  if(currentView==='stacked'){
     bar.classList.add('visible');
-    dot.style.background = switchOn ? '#9b7fd4' : '#666';
-    dot.style.boxShadow = switchOn ? '0 0 10px #9b7fd4' : '0 0 4px #666';
-    txt.textContent = switchOn ? '凝胶层：紫罗兰色 (着色态)' : '凝胶层：透明 (褪色态)';
-  } else {
-    bar.classList.remove('visible');
-  }
+    document.getElementById('status-dot').style.background=switchOn?'#9b7fd4':'#666';
+    document.getElementById('status-dot').style.boxShadow=switchOn?'0 0 10px #9b7fd4':'0 0 4px #666';
+    document.getElementById('status-text').textContent=switchOn?'凝胶层：紫罗兰色 (1 档 — 着色态)':'凝胶层：透明 (0 档 — 褪色态)';
+  }else{bar.classList.remove('visible');}
 }
 
-// ═══════════════════════════════════════════════
+// ═══════════════════════
 //  ORBIT CONTROLS — no auto-rotate
-// ═══════════════════════════════════════════════
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.target.set(0, -0.5, 0);
-controls.minDistance = 5;
-controls.maxDistance = 30;
-controls.maxPolarAngle = Math.PI*0.78;
-controls.minPolarAngle = Math.PI*0.12;
-controls.autoRotate = false;   // ← NO auto-rotation
-controls.autoRotateSpeed = 0;
-controls.update();
+// ═══════════════════════
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true;controls.dampingFactor=0.08;
+controls.target.set(0,-0.5,0);controls.minDistance=5;controls.maxDistance=30;
+controls.maxPolarAngle=Math.PI*0.78;controls.minPolarAngle=Math.PI*0.12;
+controls.autoRotate=false;controls.update();
 
-const stackedCamPos = new THREE.Vector3(0, 0.2, 16);
-const stackedCamTgt = new THREE.Vector3(0, -0.8, 0);
-const explodedCamPos = new THREE.Vector3(5, 6, 12);
-const explodedCamTgt = new THREE.Vector3(0, 0, 0);
+const stackedCamPos=new THREE.Vector3(0,0.2,16);
+const stackedCamTgt=new THREE.Vector3(0,-0.8,0);
+const explodedCamPos=new THREE.Vector3(5,6,12);
+const explodedCamTgt=new THREE.Vector3(0,0,0);
 
-function resetCamera() {
-  if(currentView==='stacked') {
-    camera.position.copy(stackedCamPos);
-    controls.target.copy(stackedCamTgt);
-  } else {
-    camera.position.copy(explodedCamPos);
-    controls.target.copy(explodedCamTgt);
-  }
+function resetCamera(){
+  if(currentView==='stacked'){camera.position.copy(stackedCamPos);controls.target.copy(stackedCamTgt);}
+  else{camera.position.copy(explodedCamPos);controls.target.copy(explodedCamTgt);}
   controls.update();
 }
 
-// ═══════════════════════════════════════════════
-//  RAYCASTER — click & hover
-// ═══════════════════════════════════════════════
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-let hoveredLayer = null;
-let selectedLayer = null;
+// ═══════════════════════
+//  RAYCASTER
+// ═══════════════════════
+const raycaster=new THREE.Raycaster();const mouse=new THREE.Vector2();
+let hoveredLayer=null,selectedLayer=null;
+function getIntersections(ev){mouse.x=(ev.clientX/container.clientWidth)*2-1;mouse.y=-(ev.clientY/container.clientHeight)*2+1;raycaster.setFromCamera(mouse,camera);return raycaster.intersectObjects([...layerMeshes,switchGroup],true);}
+container.addEventListener('mousemove',ev=>{const hits=getIntersections(ev);if(hits.length>0){let obj=hits[0].object;while(obj){if(obj.userData&&obj.userData.isSwitch){container.classList.add('pointer');if(hoveredLayer){resetHighlight();hoveredLayer=null;}return;}if(obj.userData&&obj.userData.layerData){container.classList.add('pointer');if(hoveredLayer!==obj){resetHighlight();hoveredLayer=obj;highlightLayer(obj,true);}return;}obj=obj.parent;}}container.classList.remove('pointer');if(hoveredLayer){resetHighlight();hoveredLayer=null;}updateLegendHighlight(null);});
+container.addEventListener('click',ev=>{const hits=getIntersections(ev);if(hits.length>0){let obj=hits[0].object;while(obj){if(obj.userData&&obj.userData.isSwitch){toggleSwitch();return;}if(obj.userData&&obj.userData.layerData){selectLayer(obj);return;}obj=obj.parent;}}});
 
-function getIntersections(ev) {
-  mouse.x = (ev.clientX/container.clientWidth)*2-1;
-  mouse.y = -(ev.clientY/container.clientHeight)*2+1;
-  raycaster.setFromCamera(mouse, camera);
-  return raycaster.intersectObjects([...layerMeshes, switchGroup], true);
-}
+function highlightLayer(mesh,on){const idx=mesh.userData.layerIndex,layer=layers[idx];if(on){mesh.material.emissive=new THREE.Color(layer.color);mesh.material.emissiveIntensity=0.4;mesh.material.opacity=Math.min(layer.opacity+0.2,0.95);mesh.scale.set(1.04,1,1.04);}else{mesh.material.emissive=new THREE.Color(0x000000);mesh.material.emissiveIntensity=0;mesh.material.opacity=(idx===1&&switchOn)?0.82:layer.opacity;mesh.scale.set(1,1,1);if(idx===1&&switchOn){mesh.material.color.set(layer.colorOn);mesh.material.emissive=new THREE.Color(layer.colorOn);mesh.material.emissiveIntensity=0.3;}else if(idx===1)mesh.material.color.set(layer.color);}updateLegendHighlight(on?idx:null);}
+function resetHighlight(){layerMeshes.forEach((m,i)=>{m.material.emissive=new THREE.Color(0x000000);m.material.emissiveIntensity=0;m.material.opacity=(i===1&&switchOn)?0.82:layers[i].opacity;m.scale.set(1,1,1);if(i===1&&switchOn){m.material.color.set(layers[i].colorOn);m.material.emissive=new THREE.Color(layers[i].colorOn);m.material.emissiveIntensity=0.3;}else if(i===1)m.material.color.set(layers[i].color);});}
+function selectLayer(mesh){const idx=mesh.userData.layerIndex,layer=layers[idx];if(selectedLayer===mesh){closeDetail();return;}if(selectedLayer)resetHighlight();selectedLayer=mesh;highlightLayer(mesh,true);document.getElementById('detail-title').textContent=`第 ${layer.num} 层 — ${layer.name}`;document.getElementById('detail-eng').textContent=layer.eng;document.getElementById('detail-desc').textContent=layer.desc;document.getElementById('detail-materials').innerHTML=layer.materials.map(m=>`<span class="material-tag">${m}</span>`).join('');document.getElementById('detail-popup').classList.add('visible');const wp=new THREE.Vector3();mesh.getWorldPosition(wp);animateCam(new THREE.Vector3(wp.x+5,wp.y,wp.z+6),wp);}
+function closeDetail(){document.getElementById('detail-popup').classList.remove('visible');if(selectedLayer){resetHighlight();selectedLayer=null;}updateLegendHighlight(null);}
+function animateCam(to,look){const sp=camera.position.clone(),sl=controls.target.clone(),st=performance.now(),dur=800;function step(t){const e=Math.min((t-st)/dur,1),ease=e<.5?2*e*e:-1+(4-2*e)*e;camera.position.lerpVectors(sp,to,ease);controls.target.lerpVectors(sl,look,ease);controls.update();if(e<1)requestAnimationFrame(step);}requestAnimationFrame(step);}
 
-container.addEventListener('mousemove', ev=>{
-  const hits = getIntersections(ev);
-  if(hits.length>0) {
-    let obj=hits[0].object;
-    while(obj){
-      if(obj.userData&&obj.userData.isSwitch){container.classList.add('pointer'); if(hoveredLayer){resetHighlight();hoveredLayer=null;}return;}
-      if(obj.userData&&obj.userData.layerData){container.classList.add('pointer'); if(hoveredLayer!==obj){resetHighlight();hoveredLayer=obj;highlightLayer(obj,true);}return;}
-      obj=obj.parent;
-    }
-  }
-  container.classList.remove('pointer');
-  if(hoveredLayer){resetHighlight();hoveredLayer=null;}
-  updateLegendHighlight(null);
-});
-
-container.addEventListener('click', ev=>{
-  const hits = getIntersections(ev);
-  if(hits.length>0) {
-    let obj=hits[0].object;
-    while(obj){
-      if(obj.userData&&obj.userData.isSwitch){toggleSwitch();return;}
-      if(obj.userData&&obj.userData.layerData){selectLayer(obj);return;}
-      obj=obj.parent;
-    }
-  }
-});
-
-function highlightLayer(mesh, on) {
-  const idx=mesh.userData.layerIndex, layer=layers[idx];
-  if(on){
-    mesh.material.emissive=new THREE.Color(layer.color); mesh.material.emissiveIntensity=0.4;
-    mesh.material.opacity=Math.min(layer.opacity+0.2,0.95);
-    mesh.scale.set(1.04,1,1.04);
-  } else {
-    mesh.material.emissive=new THREE.Color(0x000000); mesh.material.emissiveIntensity=0;
-    mesh.material.opacity=(idx===1&&switchOn)?0.82:layer.opacity;
-    mesh.scale.set(1,1,1);
-    if(idx===1&&switchOn){mesh.material.color.set(layer.colorOn);mesh.material.emissive=new THREE.Color(layer.colorOn);mesh.material.emissiveIntensity=0.3;}
-    else if(idx===1) mesh.material.color.set(layer.color);
-  }
-  updateLegendHighlight(on?idx:null);
-}
-
-function resetHighlight() {
-  layerMeshes.forEach((m,i)=>{
-    m.material.emissive=new THREE.Color(0x000000); m.material.emissiveIntensity=0;
-    m.material.opacity=(i===1&&switchOn)?0.82:layers[i].opacity;
-    m.scale.set(1,1,1);
-    if(i===1&&switchOn){m.material.color.set(layers[i].colorOn);m.material.emissive=new THREE.Color(layers[i].colorOn);m.material.emissiveIntensity=0.3;}
-    else if(i===1)m.material.color.set(layers[i].color);
-  });
-}
-
-function selectLayer(mesh) {
-  const idx=mesh.userData.layerIndex, layer=layers[idx];
-  if(selectedLayer===mesh){closeDetail();return;}
-  if(selectedLayer)resetHighlight();
-  selectedLayer=mesh; highlightLayer(mesh,true);
-  document.getElementById('detail-title').textContent=`第 ${layer.num} 层 — ${layer.name}`;
-  document.getElementById('detail-eng').textContent=layer.eng;
-  document.getElementById('detail-desc').textContent=layer.desc;
-  document.getElementById('detail-materials').innerHTML=layer.materials.map(m=>`<span class="material-tag">${m}</span>`).join('');
-  document.getElementById('detail-popup').classList.add('visible');
-  const wp=new THREE.Vector3(); mesh.getWorldPosition(wp);
-  animateCam(new THREE.Vector3(wp.x+5,wp.y,wp.z+6), wp);
-}
-
-function closeDetail() {
-  document.getElementById('detail-popup').classList.remove('visible');
-  if(selectedLayer){resetHighlight();selectedLayer=null;}
-  updateLegendHighlight(null);
-}
-
-function animateCam(to, look) {
-  const sp=camera.position.clone(), sl=controls.target.clone(), st=performance.now(), dur=800;
-  function step(t){
-    const e=Math.min((t-st)/dur,1), ease=e<.5?2*e*e:-1+(4-2*e)*e;
-    camera.position.lerpVectors(sp,to,ease); controls.target.lerpVectors(sl,look,ease); controls.update();
-    if(e<1)requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-}
-
-// ═══════════════════════════════════════════════
+// ═══════════════════════
 //  LEGEND
-// ═══════════════════════════════════════════════
-const legendEl = document.getElementById('legend');
-layers.forEach((layer,i)=>{
-  const it=document.createElement('div'); it.className='legend-item'; it.dataset.index=i;
-  it.innerHTML=`<span class="legend-num">${layer.num}</span><span class="legend-swatch" style="background:#${new THREE.Color(layer.color).getHexString()};opacity:.8"></span><span>${layer.shortName}</span>`;
-  it.addEventListener('click',()=>selectLayer(layerMeshes[i]));
-  it.addEventListener('mouseenter',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();highlightLayer(layerMeshes[i],true);hoveredLayer=layerMeshes[i];container.classList.add('pointer');}});
-  it.addEventListener('mouseleave',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();hoveredLayer=null;container.classList.remove('pointer');}});
-  legendEl.appendChild(it);
-});
-function updateLegendHighlight(idx) {
-  Array.from(legendEl.querySelectorAll('.legend-item')).forEach((el,i)=>el.classList.toggle('highlight',i===idx));
-}
+// ═══════════════════════
+const legendEl=document.getElementById('legend');
+layers.forEach((layer,i)=>{const it=document.createElement('div');it.className='legend-item';it.dataset.index=i;it.innerHTML=`<span class="legend-num">${layer.num}</span><span class="legend-swatch" style="background:#${new THREE.Color(layer.color).getHexString()};opacity:.8"></span><span>${layer.shortName}</span>`;it.addEventListener('click',()=>selectLayer(layerMeshes[i]));it.addEventListener('mouseenter',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();highlightLayer(layerMeshes[i],true);hoveredLayer=layerMeshes[i];container.classList.add('pointer');}});it.addEventListener('mouseleave',()=>{if(!selectedLayer||selectedLayer!==layerMeshes[i]){resetHighlight();hoveredLayer=null;container.classList.remove('pointer');}});legendEl.appendChild(it);});
+function updateLegendHighlight(idx){Array.from(legendEl.querySelectorAll('.legend-item')).forEach((el,i)=>el.classList.toggle('highlight',i===idx));}
 
-// ═══════════════════════════════════════════════
+// ═══════════════════════
 //  RENDER LOOP
-// ═══════════════════════════════════════════════
-const clock = new THREE.Clock();
-function animate() {
-  requestAnimationFrame(animate);
-  const dt = clock.getDelta();
-  controls.update();
+// ═══════════════════════
+const clock=new THREE.Clock();
+function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();controls.update();if(selectedLayer){const p=1+Math.sin(performance.now()*0.005)*0.015;selectedLayer.scale.set(p,1,p);}pts.rotation.y+=dt*0.03;pts.rotation.x+=dt*0.015;renderer.render(scene,camera);}
 
-  // Pulse selected layer
-  if(selectedLayer){const p=1+Math.sin(performance.now()*0.005)*0.015;selectedLayer.scale.set(p,1,p);}
-
-  // Pulse LED when switch on (stacked view)
-  if(switchOn && currentView==='stacked'){
-    ledDot.material.emissiveIntensity = 2.5 * (1+Math.sin(performance.now()*0.008)*0.4);
-  }
-
-  pts.rotation.y += dt*0.03;
-  pts.rotation.x += dt*0.015;
-  renderer.render(scene, camera);
-}
-
-// ═══════════════════════════════════════════════
-//  EVENTS & INIT
-// ═══════════════════════════════════════════════
-window.addEventListener('resize',()=>{
-  camera.aspect=container.clientWidth/container.clientHeight; camera.updateProjectionMatrix();
-  renderer.setSize(container.clientWidth,container.clientHeight);
-});
-
-window.addEventListener('keydown',e=>{
-  switch(e.key.toLowerCase()){
-    case 'e': setView('exploded'); break;
-    case 's': setView('stacked'); break;
-    case 'a': toggleSwitch(); break;
-    case 'r': resetCamera(); break;
-    case 'escape': closeDetail(); break;
-    case '1': selectLayer(layerMeshes[0]); break;
-    case '2': selectLayer(layerMeshes[1]); break;
-    case '3': selectLayer(layerMeshes[2]); break;
-  }
-});
+// Events
+window.addEventListener('resize',()=>{camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);});
+window.addEventListener('keydown',e=>{switch(e.key.toLowerCase()){case'e':setView('exploded');break;case's':setView('stacked');break;case'a':toggleSwitch();break;case'r':resetCamera();break;case'd':if(currentView==='stacked')toggleDims();break;case'escape':closeDetail();break;case'1':selectLayer(layerMeshes[0]);break;case'2':selectLayer(layerMeshes[1]);break;case'3':selectLayer(layerMeshes[2]);break;}});
 
 // Init
 layoutExploded();
-setTimeout(()=>{document.getElementById('hint').style.opacity='0';setTimeout(()=>document.getElementById('hint').remove(),1000);},10000);
+setTimeout(()=>{document.getElementById('hint').style.opacity='0';setTimeout(()=>document.getElementById('hint').remove(),1000);},12000);
 animate();
 
 // Expose
-window.setView=setView; window.resetCamera=resetCamera; window.toggleSwitch=toggleSwitch; window.closeDetail=closeDetail;
+window.setView=setView;window.resetCamera=resetCamera;window.toggleSwitch=toggleSwitch;window.toggleDims=toggleDims;window.closeDetail=closeDetail;
 
 console.log('🔬 电致变色器件 3D 模型已就绪');
-console.log('  ⌨ E=分解 S=堆叠 A=变色 1-3=层 R=重置 ESC=关闭');
+console.log('  ⌨ E=分解 S=堆叠 D=尺寸标注 A=开关变色 1-3=层 R=重置');
 </script>
 </body>
 </html>
