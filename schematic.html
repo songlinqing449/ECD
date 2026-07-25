@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECD 电致变色微观机理 — 2D 剖面示意图</title>
+<style>
+  :root{--bg:#ffffff;--text:#222;--accent:#6040bb;--border:#ddd}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#f5f5f5;font-family:'PingFang SC','Microsoft YaHei','Segoe UI',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}
+  #wrapper{background:#fff;border-radius:12px;box-shadow:0 2px 20px rgba(0,0,0,.08);padding:20px 20px 16px;max-width:1060px}
+  canvas{display:block;border:1px solid #e0e0e0;border-radius:8px;cursor:default}
+  #controls{display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:16px;flex-wrap:wrap}
+  #scene-label{font-weight:700;font-size:.95rem;color:var(--accent);min-width:260px}
+  #progress-bar{flex:1;height:6px;background:#e8e8e8;border-radius:3px;overflow:hidden;min-width:200px}
+  #progress-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .1s linear}
+  #time-display{font-size:.8rem;color:#888;min-width:80px;text-align:right;font-variant-numeric:tabular-nums}
+  .btn-sm{padding:6px 14px;border:1px solid #ccc;border-radius:16px;background:#fff;cursor:pointer;font-size:.8rem;font-family:inherit;transition:all .2s}
+  .btn-sm:hover{background:#f0f0f0;border-color:#aaa}
+  .btn-sm.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  #legend-panel{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:.72rem;color:#555;justify-content:center}
+  .lg-item{display:flex;align-items:center;gap:4px}
+  .lg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .lg-dia{width:10px;height:10px;flex-shrink:0}
+  a.back-link{font-size:.78rem;color:#888;text-decoration:none;margin-bottom:8px;display:inline-block}
+  a.back-link:hover{color:#333}
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <a class="back-link" href="index.html">← 返回 3D 模型</a>
+  <canvas id="c" width="1040" height="680"></canvas>
+  <div id="controls">
+    <span id="scene-label">镜头 1 — 初始 0V：离子热运动</span>
+    <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+    <span id="time-display">0.0s / 20.0s</span>
+    <button class="btn-sm" id="btn-pause" onclick="togglePause()">⏯ 暂停</button>
+    <button class="btn-sm" onclick="resetAnim()">↺ 重置</button>
+  </div>
+  <div id="legend-panel">
+    <span class="lg-item"><span class="lg-dot" style="background:#6040bb"></span> BV⁺· 自由基</span>
+    <span class="lg-item"><span class="lg-dot" style="background:#fff;border:1px solid #999"></span> BV²⁺ 无色紫精</span>
+    <span class="lg-item"><span class="lg-dot" style="background:#ff4444"></span> Li⁺</span>
+    <span class="lg-item"><span class="lg-dia" style="background:#44bbcc;clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)"></span> BF₄⁻</span>
+    <span class="lg-item"><span class="lg-dot" style="background:#ff9944"></span> 高分子链</span>
+    <span class="lg-item"><span class="lg-dot" style="background:#a0d8ff"></span> 溶剂</span>
+    <span class="lg-item"><span class="lg-dot" style="background:#e8b800"></span> e⁻ 电子</span>
+  </div>
+</div>
+
+<script>
+// ═══════════════════  CONSTANTS  ═══════════════════
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const TOTAL = 20; // total animation seconds
+const SCENES = [
+  {n:1, t0:0,  t1:3,  label:'镜头 1 — 初始 0V：离子无规则热运动'},
+  {n:2, t0:3,  t1:5,  label:'镜头 2 — 接通 +3V：电场建立，电子流向工作电极'},
+  {n:3, t0:5,  t1:11, label:'镜头 3 — 着色阶段：BV²⁺+e⁻→BV⁺·，Li⁺/BF₄⁻定向迁移'},
+  {n:4, t0:11, t1:14, label:'镜头 4 — +3V 稳态：动态平衡'},
+  {n:5, t0:14, t1:19, label:'镜头 5 — 断电褪色：电场消失，离子扩散均匀，链段回弹'},
+  {n:6, t0:19, t1:20, label:'镜头 6 — 定格总结：可逆电致变色完成'},
+];
+
+// ── Layer geometry ──
+const LM = 110, RM = 110; // left/right margins
+const LAYER_W = W - LM - RM;
+const TOP_ELEC_Y = 55, ELEC_H = 65;
+const ACTIVE_Y = TOP_ELEC_Y + ELEC_H, ACTIVE_H = 95;
+const GEL_Y = ACTIVE_Y + ACTIVE_H, GEL_H = 310;
+const BOT_ELEC_Y = GEL_Y + GEL_H;
+const TOTAL_H = BOT_ELEC_Y + ELEC_H - TOP_ELEC_Y;
+
+// Wire path (right side)
+const WIRE_X = W - RM + 30;
+const WIRE_TOP_Y = TOP_ELEC_Y + ELEC_H/2;
+const WIRE_BOT_Y = BOT_ELEC_Y + ELEC_H/2;
+const WIRE_MID_Y = (WIRE_TOP_Y + WIRE_BOT_Y) / 2;
+const WIRE_SEGMENTS = [
+  {x:WIRE_X, y:WIRE_TOP_Y},
+  {x:WIRE_X, y:WIRE_MID_Y - 28},
+  // voltage source gap at WIRE_MID_Y
+  {x:WIRE_X, y:WIRE_MID_Y + 28},
+  {x:WIRE_X, y:WIRE_BOT_Y},
+];
+function wireLength(){
+  let len = 0;
+  for(let i=1;i<WIRE_SEGMENTS.length;i++){
+    const dx=WIRE_SEGMENTS[i].x-WIRE_SEGMENTS[i-1].x;
+    const dy=WIRE_SEGMENTS[i].y-WIRE_SEGMENTS[i-1].y;
+    len += Math.sqrt(dx*dx+dy*dy);
+  }
+  return len;
+}
+const TOTAL_WIRE_LEN = wireLength();
+
+// ═══════════════════  PARTICLE POOLS  ═══════════════════
+// BV particles — confined to active layer
+const BV_COUNT = 20;
+const bvParticles = [];
+for(let i=0;i<BV_COUNT;i++){
+  bvParticles.push({
+    x: LM + 20 + Math.random()*(LAYER_W - 40),
+    y: ACTIVE_Y + 10 + Math.random()*(ACTIVE_H - 20),
+    restX: 0, restY: 0, // set after init
+    charge: 0, // 0=BV²⁺, 1=BV⁺·  (transition progress 0→1)
+    targetCharge: 0,
+    phase: Math.random()*Math.PI*2,
+  });
+}
+bvParticles.forEach(p=>{p.restX=p.x;p.restY=p.y;});
+
+// Li⁺ ions — mobile in gel
+const LI_COUNT = 28;
+const liParticles = [];
+for(let i=0;i<LI_COUNT;i++){
+  liParticles.push({
+    x: LM + 15 + Math.random()*(LAYER_W - 30),
+    y: GEL_Y + 15 + Math.random()*(GEL_H - 30),
+    restX: 0, restY: 0,
+    vx: 0, vy: 0,
+    phase: Math.random()*Math.PI*2,
+  });
+}
+liParticles.forEach(p=>{p.restX=p.x;p.restY=p.y;});
+
+// BF₄⁻ ions — mobile in gel
+const BF4_COUNT = 18;
+const bf4Particles = [];
+for(let i=0;i<BF4_COUNT;i++){
+  bf4Particles.push({
+    x: LM + 15 + Math.random()*(LAYER_W - 30),
+    y: GEL_Y + 15 + Math.random()*(GEL_H - 30),
+    restX: 0, restY: 0,
+    vx: 0, vy: 0,
+    phase: Math.random()*Math.PI*2,
+    rot: Math.random()*Math.PI*2,
+  });
+}
+bf4Particles.forEach(p=>{p.restX=p.x;p.restY=p.y;});
+
+// Solvent — scattered in gel + active
+const SOLV_COUNT = 40;
+const solvParticles = [];
+for(let i=0;i<SOLV_COUNT;i++){
+  const region = Math.random();
+  let sx, sy;
+  if(region < 0.2){
+    sx = LM + 10 + Math.random()*(LAYER_W - 20);
+    sy = ACTIVE_Y + 5 + Math.random()*(ACTIVE_H - 10);
+  } else {
+    sx = LM + 10 + Math.random()*(LAYER_W - 20);
+    sy = GEL_Y + 10 + Math.random()*(GEL_H - 20);
+  }
+  solvParticles.push({x:sx, y:sy, restX:sx, restY:sy, vx:0, vy:0, phase:Math.random()*Math.PI*2});
+}
+
+// Electrons — ONLY on wire, never in gel!
+const ELEC_COUNT = 9;
+const electrons = [];
+for(let i=0;i<ELEC_COUNT;i++){
+  electrons.push({dist: (i/ELEC_COUNT)*TOTAL_WIRE_LEN, visible: false});
+}
+
+// ═══════════════════  POLYMER NETWORK  ═══════════════════
+const POLY_NODES = 32;
+const polyNodes = [];
+// Create a semi-regular grid with jitter in gel region
+const cols = 8, rows = 4;
+const cellW = (LAYER_W - 40) / (cols - 1);
+const cellH = (GEL_H - 40) / (rows - 1);
+for(let r=0;r<rows;r++){
+  for(let c=0;c<cols;c++){
+    const nx = LM + 20 + c*cellW + (Math.random()-0.5)*cellW*0.5;
+    const ny = GEL_Y + 20 + r*cellH + (Math.random()-0.5)*cellH*0.5;
+    polyNodes.push({
+      x: nx, y: ny,
+      restX: nx, restY: ny,
+      vx: 0, vy: 0,
+    });
+  }
+}
+// Connect nearby nodes → edges
+const polyEdges = [];
+const MAX_DIST = cellW * 1.4;
+for(let i=0;i<polyNodes.length;i++){
+  for(let j=i+1;j<polyNodes.length;j++){
+    const dx = polyNodes[i].restX - polyNodes[j].restX;
+    const dy = polyNodes[i].restY - polyNodes[j].restY;
+    if(Math.sqrt(dx*dx+dy*dy) < MAX_DIST){
+      polyEdges.push({a:i, b:j});
+    }
+  }
+}
+
+// ═══════════════════  ANIMATION STATE  ═══════════════════
+let paused = false;
+let startTime = null;
+let pausedElapsed = 0;
+let prevScene = -1;
+
+function getElapsed(){
+  if(paused) return pausedElapsed % TOTAL;
+  return ((performance.now() - startTime)/1000 + pausedElapsed) % TOTAL;
+}
+
+function getSceneInfo(elapsed){
+  for(const s of SCENES){
+    if(elapsed >= s.t0 && elapsed < s.t1) return s;
+  }
+  return SCENES[SCENES.length-1];
+}
+
+function sceneProgress(elapsed, s){
+  if(s.t1 === s.t0) return 1;
+  return Math.max(0, Math.min(1, (elapsed - s.t0)/(s.t1 - s.t0)));
+}
+
+// ═══════════════════  PHYSICS / UPDATE  ═══════════════════
+function wrapGelX(x){ return Math.max(LM+8, Math.min(W-RM-8, x)); }
+function wrapGelY(y){ return Math.max(GEL_Y+8, Math.min(GEL_Y+GEL_H-8, y)); }
+function wrapActiveY(y){ return Math.max(ACTIVE_Y+6, Math.min(ACTIVE_Y+ACTIVE_H-6, y)); }
+
+function thermalMotion(p, dt, bx, by, bw, bh){
+  // Random walk with restoring force toward rest position
+  const dx = p.restX - p.x, dy = p.restY - p.y;
+  p.vx = (p.vx || 0) + (Math.random()-0.5)*dt*18 + dx*dt*0.5;
+  p.vy = (p.vy || 0) + (Math.random()-0.5)*dt*18 + dy*dt*0.5;
+  p.vx *= 0.92; p.vy *= 0.92;
+  p.x += p.vx*dt;
+  p.y += p.vy*dt;
+  p.x = Math.max(bx, Math.min(bx+bw, p.x));
+  p.y = Math.max(by, Math.min(by+bh, p.y));
+}
+
+function updateScene123(elapsed, dt){
+  const s = getSceneInfo(elapsed);
+  const sp = sceneProgress(elapsed, s);
+
+  // ── BV particles: transition charge state ──
+  let bvTarget = 0;
+  if(s.n === 1) bvTarget = 0;
+  else if(s.n === 2) bvTarget = sp * 0.3; // begin slight transition as e⁻ arrive
+  else if(s.n === 3) bvTarget = 0.3 + sp * 0.7; // main coloring
+  else if(s.n === 4) bvTarget = 1;
+  else if(s.n === 5) bvTarget = 1 - sp; // bleaching
+  else bvTarget = 0;
+
+  bvParticles.forEach((p,i)=>{
+    p.targetCharge = bvTarget;
+    // Transition with individual variation
+    const speed = 0.6 + (i/BV_COUNT)*0.8; // some transition faster than others
+    if(p.charge < p.targetCharge) p.charge = Math.min(p.targetCharge, p.charge + dt*speed);
+    else if(p.charge > p.targetCharge) p.charge = Math.max(p.targetCharge, p.charge - dt*speed);
+
+    // Thermal jitter in active layer
+    thermalMotion(p, dt, LM+15, ACTIVE_Y+8, LAYER_W-30, ACTIVE_H-16);
+    p.y = wrapActiveY(p.y);
+  });
+
+  // ── Li⁺: migrate toward top electrode (working) in scenes 2-4, diffuse in scene 5 ──
+  liParticles.forEach((p,i)=>{
+    let driftY = 0;
+    if(s.n === 2) driftY = -sp * 25; // begin migrating up
+    else if(s.n === 3) driftY = -(25 + sp * 35); // strong upward migration
+    else if(s.n === 4) driftY = -60; // steady at top
+    else if(s.n === 5) driftY = -(60 * (1-sp)); // gradually return
+    else driftY = 0;
+
+    // Rest position drifts upward (for spring-back in scene 5)
+    const topZone = GEL_Y + 25;
+    const botZone = GEL_Y + GEL_H - 25;
+    if(s.n >= 2 && s.n <= 4){
+      const tgtY = topZone + (botZone - topZone) * Math.max(0, 1 - (s.n>=3?sp:0));
+      p.restY = p.restY + (tgtY - p.restY) * dt * 0.8;
+    } else if(s.n === 5){
+      // Return to original random distribution
+      const origY = GEL_Y + 15 + (i/LI_COUNT)*(GEL_H - 30);
+      p.restY = p.restY + (origY - p.restY) * dt * 0.5;
+    }
+
+    p.vy = (p.vy||0) + driftY*dt + (Math.random()-0.5)*dt*14;
+    p.vx = (p.vx||0) + (Math.random()-0.5)*dt*14;
+    p.vy += (p.restY - p.y)*dt*0.8;
+    p.vx += (p.restX - p.x)*dt*0.3;
+    p.vy *= 0.9; p.vx *= 0.9;
+    p.y += p.vy*dt; p.x += p.vx*dt;
+    p.x = wrapGelX(p.x); p.y = wrapGelY(p.y);
+  });
+
+  // ── BF₄⁻: migrate toward bottom electrode (counter) ──
+  bf4Particles.forEach((p,i)=>{
+    let driftY = 0;
+    if(s.n === 2) driftY = sp * 25;
+    else if(s.n === 3) driftY = 25 + sp * 35;
+    else if(s.n === 4) driftY = 60;
+    else if(s.n === 5) driftY = 60 * (1-sp);
+    else driftY = 0;
+
+    const topZone = GEL_Y + 25;
+    const botZone = GEL_Y + GEL_H - 25;
+    if(s.n >= 2 && s.n <= 4){
+      const tgtY = botZone - (botZone - topZone) * Math.max(0, 1 - (s.n>=3?sp:0));
+      p.restY = p.restY + (tgtY - p.restY) * dt * 0.8;
+    } else if(s.n === 5){
+      const origY = GEL_Y + 15 + (i/BF4_COUNT)*(GEL_H - 30);
+      p.restY = p.restY + (origY - p.restY) * dt * 0.5;
+    }
+
+    p.vy = (p.vy||0) + driftY*dt + (Math.random()-0.5)*dt*14;
+    p.vx = (p.vx||0) + (Math.random()-0.5)*dt*14;
+    p.vy += (p.restY - p.y)*dt*0.8;
+    p.vx += (p.restX - p.x)*dt*0.3;
+    p.vy *= 0.9; p.vx *= 0.9;
+    p.y += p.vy*dt; p.x += p.vx*dt;
+    p.x = wrapGelX(p.x); p.y = wrapGelY(p.y);
+  });
+
+  // ── Solvent ──
+  solvParticles.forEach(p=>{
+    // In active layer or gel, just thermal motion
+    const inActive = p.restY < GEL_Y;
+    const by = inActive ? ACTIVE_Y+5 : GEL_Y+10;
+    const bh = inActive ? ACTIVE_H-10 : GEL_H-20;
+    thermalMotion(p, dt, LM+10, by, LAYER_W-20, bh);
+  });
+
+  // ── Polymer nodes: local deformation near boundaries ──
+  polyNodes.forEach((n,i)=>{
+    const depthFromTop = (n.restY - GEL_Y) / GEL_H; // 0=top of gel, 1=bottom
+    let offsetY = 0;
+    if(s.n === 3){
+      // Nodes near top get pulled up (Li⁺ drag), nodes near bottom pulled down (BF₄⁻ drag)
+      const topPull = Math.max(0, 1 - depthFromTop*3) * sp * 18; // top 1/3 of gel
+      const botPull = Math.max(0, 1 - (1-depthFromTop)*3) * sp * 14; // bottom 1/3
+      offsetY = -topPull + botPull;
+    } else if(s.n === 4){
+      const topPull = Math.max(0, 1 - depthFromTop*3) * 18;
+      const botPull = Math.max(0, 1 - (1-depthFromTop)*3) * 14;
+      offsetY = -topPull + botPull;
+    } else if(s.n === 5){
+      // Spring back
+      const holdover = Math.max(0, 1 - depthFromTop*3) * 18 * (1-sp);
+      const holdoverB = Math.max(0, 1 - (1-depthFromTop)*3) * 14 * (1-sp);
+      offsetY = -holdover + holdoverB;
+    }
+
+    n.x = n.x + (n.restX - n.x)*dt*1.2 + (Math.random()-0.5)*dt*3;
+    n.y = n.y + (n.restY + offsetY - n.y)*dt*1.2 + (Math.random()-0.5)*dt*3;
+  });
+
+  // ── Electrons: flow direction depends on scene ──
+  const flowDir = (s.n >= 2 && s.n <= 4) ? (s.n <= 4 ? 1 : 0) : 0; // 1=flowing
+  electrons.forEach((e,i)=>{
+    if(s.n >= 2 && s.n <= 4){
+      e.visible = true;
+      // In scenes 2-4, electrons flow through wire
+      const speed = 45 + (s.n===3?15:0); // faster during coloring
+      e.dist = (e.dist + dt*speed) % TOTAL_WIRE_LEN;
+    } else {
+      e.visible = false;
+    }
+  });
+}
+
+// ═══════════════════  RENDER  ═══════════════════
+function drawRoundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h); ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
+}
+
+function render(elapsed){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,W,H);
+  const s = getSceneInfo(elapsed);
+  const sp = sceneProgress(elapsed, s);
+
+  // ── 1. Top ITO electrode ──
+  ctx.fillStyle='#888888';
+  drawRoundRect(LM, TOP_ELEC_Y, LAYER_W, ELEC_H, 4);
+  ctx.fill();
+  // Texture lines
+  ctx.strokeStyle='rgba(255,255,255,0.15)';
+  ctx.lineWidth=0.5;
+  for(let y=TOP_ELEC_Y+10;y<TOP_ELEC_Y+ELEC_H;y+=12){
+    ctx.beginPath(); ctx.moveTo(LM+10,y); ctx.lineTo(W-RM-10,y); ctx.stroke();
+  }
+  ctx.fillStyle='#fff';
+  ctx.font='bold 13px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('ITO 透明导电玻璃（上）— 工作电极', W/2, TOP_ELEC_Y+ELEC_H/2+5);
+
+  // ── 2. Active layer ──
+  const activeAlpha = 0.05 + bvParticles.reduce((s,p)=>s+p.charge,0)/BV_COUNT * 0.28;
+  ctx.fillStyle=`rgba(96,64,187,${activeAlpha})`;
+  drawRoundRect(LM, ACTIVE_Y, LAYER_W, ACTIVE_H, 3);
+  ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.1)';
+  ctx.lineWidth=1;
+  drawRoundRect(LM, ACTIVE_Y, LAYER_W, ACTIVE_H, 3);
+  ctx.stroke();
+  ctx.fillStyle='#555';
+  ctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='right';
+  ctx.fillText('活性层 (苄基紫精固定)', W-RM-10, ACTIVE_Y+16);
+
+  // ── 3. Gel electrolyte ──
+  ctx.fillStyle='rgba(240,238,232,0.7)';
+  drawRoundRect(LM, GEL_Y, LAYER_W, GEL_H, 3);
+  ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.08)';
+  ctx.lineWidth=1;
+  drawRoundRect(LM, GEL_Y, LAYER_W, GEL_H, 3);
+  ctx.stroke();
+  ctx.fillStyle='#888';
+  ctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='right';
+  ctx.fillText('凝胶电解质 (PMMA/LiClO₄/PC)', W-RM-10, GEL_Y+16);
+
+  // ── 4. Bottom ITO electrode ──
+  ctx.fillStyle='#888888';
+  drawRoundRect(LM, BOT_ELEC_Y, LAYER_W, ELEC_H, 4);
+  ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.15)';
+  ctx.lineWidth=0.5;
+  for(let y=BOT_ELEC_Y+10;y<BOT_ELEC_Y+ELEC_H;y+=12){
+    ctx.beginPath(); ctx.moveTo(LM+10,y); ctx.lineTo(W-RM-10,y); ctx.stroke();
+  }
+  ctx.fillStyle='#fff';
+  ctx.font='bold 13px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('ITO 透明导电玻璃（下）— 对电极', W/2, BOT_ELEC_Y+ELEC_H/2+5);
+
+  // ── 5. Polymer chains (render before particles so they're behind) ──
+  polyEdges.forEach(edge=>{
+    const a = polyNodes[edge.a], b = polyNodes[edge.b];
+    const mx = (a.x + b.x)/2, my = (a.y + b.y)/2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const perpX = -dy * 0.08, perpY = dx * 0.08;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.quadraticCurveTo(mx + perpX, my + perpY, b.x, b.y);
+    ctx.strokeStyle='#ff9944';
+    ctx.lineWidth=2.2;
+    ctx.globalAlpha=0.65;
+    ctx.stroke();
+    ctx.globalAlpha=1;
+  });
+  // Polymer node dots
+  polyNodes.forEach(n=>{
+    ctx.fillStyle='#ff8830';
+    ctx.beginPath(); ctx.arc(n.x, n.y, 2.5, 0, Math.PI*2); ctx.fill();
+  });
+
+  // ── 6. Solvent particles ──
+  solvParticles.forEach(p=>{
+    ctx.fillStyle='#a0d8ff';
+    ctx.globalAlpha=0.6;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.8, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+  });
+
+  // ── 7. BF₄⁻ (cyan diamonds — render before Li⁺) ──
+  bf4Particles.forEach(p=>{
+    const sz = 4.5;
+    ctx.save(); ctx.translate(p.x, p.y);
+    ctx.fillStyle='#44bbcc';
+    ctx.globalAlpha=0.85;
+    ctx.beginPath();
+    ctx.moveTo(0,-sz); ctx.lineTo(sz*0.7,0); ctx.lineTo(0,sz); ctx.lineTo(-sz*0.7,0); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=0.4; ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.restore();
+  });
+
+  // ── 8. Li⁺ (red circles with +) ──
+  liParticles.forEach(p=>{
+    ctx.fillStyle='#ff4444';
+    ctx.globalAlpha=0.85;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
+    // + sign
+    ctx.strokeStyle='#fff'; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.moveTo(p.x-2,p.y); ctx.lineTo(p.x+2,p.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(p.x,p.y-2); ctx.lineTo(p.x,p.y+2); ctx.stroke();
+    ctx.globalAlpha=1;
+  });
+
+  // ── 9. BV particles ──
+  bvParticles.forEach(p=>{
+    const r = 5.5;
+    // Interpolate color between white and BV⁺· purple
+    const cr = Math.round(255 - (255-96)*p.charge);
+    const cg = Math.round(255 - (255-64)*p.charge);
+    const cb = Math.round(255 - (255-187)*p.charge);
+    ctx.fillStyle=`rgb(${cr},${cg},${cb})`;
+    ctx.globalAlpha=0.9;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=0.6; ctx.stroke();
+    // Label
+    if(p.charge > 0.3){
+      ctx.fillStyle=p.charge>0.7?'#fff':'#444';
+      ctx.font='bold 7px sans-serif';
+      ctx.textAlign='center';
+      ctx.fillText(p.charge>0.7?'+·':'2+', p.x, p.y+2.5);
+    }
+    ctx.globalAlpha=1;
+  });
+
+  // ── 10. Double-layer annotation (scenes 3-4) ──
+  if(s.n === 3 || s.n === 4){
+    const edlY = ACTIVE_Y + ACTIVE_H - 2;
+    ctx.strokeStyle='#6040bb';
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(LM+20, edlY); ctx.lineTo(W-RM-20, edlY); ctx.stroke();
+    ctx.setLineDash([]);
+    // Plus signs on gel side
+    ctx.fillStyle='#ff4444';
+    ctx.font='10px sans-serif';
+    for(let x=LM+40;x<W-RM-40;x+=60){
+      ctx.fillText('⊕', x, edlY+14);
+    }
+    // Minus signs on electrode side
+    ctx.fillStyle='#4488ff';
+    for(let x=LM+40;x<W-RM-40;x+=60){
+      ctx.fillText('⊖', x, edlY-8);
+    }
+    ctx.fillStyle='#6040bb';
+    ctx.font='bold 11px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign='left';
+    ctx.fillText('双电层 (EDL)', LM+20, edlY-16);
+  }
+
+  // ── 11. Wire + voltage source ──
+  // Draw wire
+  ctx.strokeStyle='#e8b800';
+  ctx.lineWidth=3.5;
+  ctx.beginPath();
+  ctx.moveTo(WIRE_X, TOP_ELEC_Y + ELEC_H/2);
+  ctx.lineTo(WIRE_X, WIRE_MID_Y - 28);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(WIRE_X, WIRE_MID_Y + 28);
+  ctx.lineTo(WIRE_X, BOT_ELEC_Y + ELEC_H/2);
+  ctx.stroke();
+  // Terminal dots at electrodes
+  ctx.fillStyle='#e8b800';
+  ctx.beginPath(); ctx.arc(WIRE_X, TOP_ELEC_Y+ELEC_H/2, 5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(WIRE_X, BOT_ELEC_Y+ELEC_H/2, 5, 0, Math.PI*2); ctx.fill();
+
+  // Voltage source box
+  const vsY = WIRE_MID_Y;
+  ctx.fillStyle='#fff';
+  ctx.strokeStyle='#333';
+  ctx.lineWidth=2;
+  drawRoundRect(WIRE_X-22, vsY-28, 44, 56, 6);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle='#222';
+  ctx.font='bold 14px sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(s.n>=2 && s.n<=4?'3V':'0V', WIRE_X, vsY+2);
+  // + and - labels
+  ctx.font='bold 12px sans-serif';
+  ctx.fillText('−', WIRE_X, vsY-32);
+  ctx.fillText('+', WIRE_X, vsY+46);
+
+  // Electrons on wire
+  if(s.n >= 2 && s.n <= 5){
+    electrons.forEach(e=>{
+      if(!e.visible) return;
+      // Convert dist to x,y along wire path
+      let remaining = e.dist;
+      let ex = WIRE_SEGMENTS[0].x, ey = WIRE_SEGMENTS[0].y;
+      for(let i=1;i<WIRE_SEGMENTS.length;i++){
+        const sx=WIRE_SEGMENTS[i-1].x, sy=WIRE_SEGMENTS[i-1].y;
+        const dx=WIRE_SEGMENTS[i].x-sx, dy=WIRE_SEGMENTS[i].y-sy;
+        const segLen = Math.sqrt(dx*dx+dy*dy);
+        if(remaining <= segLen){
+          const t = remaining/segLen;
+          ex = sx + dx*t; ey = sy + dy*t;
+          break;
+        }
+        remaining -= segLen;
+        if(i===WIRE_SEGMENTS.length-1){ ex=sx+dx; ey=sy+dy; }
+      }
+      // Glow
+      ctx.fillStyle='rgba(255,220,60,0.5)';
+      ctx.beginPath(); ctx.arc(ex, ey, 4.5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#ffcc00';
+      ctx.beginPath(); ctx.arc(ex, ey, 2.8, 0, Math.PI*2); ctx.fill();
+    });
+  }
+
+  // Wire labels
+  ctx.fillStyle='#b8960a';
+  ctx.font='10px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='left';
+  ctx.fillText('外电路导线', WIRE_X+4, WIRE_TOP_Y+30);
+  if(s.n >= 2 && s.n <= 4){
+    ctx.fillText('e⁻ →', WIRE_X+4, WIRE_TOP_Y+55);
+  }
+
+  // ── 12. E-field arrows (scenes 2-4) ──
+  if(s.n >= 2 && s.n <= 4){
+    const arrowAlpha = s.n===2 ? sp*0.6 : (s.n===5 ? (1-sp)*0.6 : 0.6);
+    ctx.globalAlpha = arrowAlpha;
+    ctx.strokeStyle='#3366cc';
+    ctx.fillStyle='#3366cc';
+    ctx.lineWidth=2;
+    for(let x=LM+25;x<W-RM-25;x+=50){
+      for(let y=ACTIVE_Y+30;y<BOT_ELEC_Y-20;y+=55){
+        const ay = y + Math.sin(elapsed*2 + x*0.05)*5;
+        ctx.beginPath();
+        ctx.moveTo(x, ay-10);
+        ctx.lineTo(x, ay+8);
+        ctx.stroke();
+        // Arrowhead
+        ctx.beginPath();
+        ctx.moveTo(x-4, ay+3);
+        ctx.lineTo(x, ay+8);
+        ctx.lineTo(x+4, ay+3);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha=1;
+    ctx.fillStyle='#3366cc';
+    ctx.font='bold 12px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign='left';
+    ctx.fillText('E⃗ 电场方向', LM+20, ACTIVE_Y+24);
+  }
+
+  // ── 13. Chemical equation (scenes 3-5) ──
+  if(s.n >= 3 && s.n <= 5){
+    const eqY = TOP_ELEC_Y - 22;
+    ctx.fillStyle='#222';
+    ctx.font='bold 13px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign='center';
+    const eq = s.n===5 ? 'BV⁺·(蓝紫色)  →  BV²⁺(无色) + e⁻   [褪色]' : 'BV²⁺(无色) + e⁻  →  BV⁺·(蓝紫色)   [着色]';
+    ctx.fillText(eq, W/2, eqY);
+    // Reaction arrow highlight
+    const eqAlpha = s.n===3 ? sp : (s.n===5 ? 1-sp : 1);
+    ctx.fillStyle=`rgba(96,64,187,${eqAlpha*0.7})`;
+  }
+
+  // ── 14. Migration arrows (scenes 3-4) ──
+  if(s.n >= 3 && s.n <= 4){
+    ctx.fillStyle='#ff4444';
+    ctx.font='italic 11px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign='left';
+    const arrowX = LM-70;
+    // Li+ upward arrow
+    const liArrowY = ACTIVE_Y + ACTIVE_H + 30;
+    ctx.fillText('Li⁺ ↑', arrowX, liArrowY);
+    drawSmallArrow(arrowX+5, liArrowY-18, arrowX+5, liArrowY-2, '#ff4444');
+
+    // BF4- downward arrow
+    ctx.fillStyle='#44bbcc';
+    const bfArrowY = BOT_ELEC_Y - 40;
+    ctx.fillText('BF₄⁻ ↓', arrowX, bfArrowY);
+    drawSmallArrow(arrowX+5, bfArrowY+5, arrowX+5, bfArrowY+20, '#44bbcc');
+  }
+
+  // ── 15. Summary overlay (scene 6) ──
+  if(s.n === 6){
+    ctx.fillStyle='rgba(255,255,255,0.75)';
+    ctx.fillRect(W/2-180, H/2-40, 360, 80);
+    ctx.strokeStyle='#6040bb';
+    ctx.lineWidth=2;
+    ctx.strokeRect(W/2-180, H/2-40, 360, 80);
+    ctx.fillStyle='#222';
+    ctx.font='bold 15px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('BV²⁺(无色) + e⁻  ⇌  BV⁺·(蓝紫色)', W/2, H/2-8);
+    ctx.fillText('可逆电致变色 — 氧化还原反应', W/2, H/2+22);
+    ctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText('Electrochromic Redox Reaction', W/2, H/2+38);
+  }
+
+  // ── 16. Top title ──
+  ctx.fillStyle='#333';
+  ctx.font='bold 14px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='left';
+  ctx.fillText('电致变色器件 (ECD) — 微观机理剖面示意图', LM, 24);
+
+  // Scene marker
+  ctx.textAlign='right';
+  ctx.fillStyle='#6040bb';
+  ctx.font='bold 12px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText(`镜头 ${s.n}/6`, W-RM, 24);
+}
+
+function drawSmallArrow(x1,y1,x2,y2,color){
+  ctx.strokeStyle=color;
+  ctx.fillStyle=color;
+  ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2-3,y2-5); ctx.lineTo(x2,y2); ctx.lineTo(x2+3,y2-5);
+  ctx.fill();
+}
+
+// ═══════════════════  MAIN LOOP  ═══════════════════
+let lastTime = performance.now();
+function loop(now){
+  if(!paused){
+    if(startTime===null) startTime = now;
+    const dt = Math.min(0.05, (now - lastTime)/1000); // cap dt
+    lastTime = now;
+    const elapsed = getElapsed();
+    updateScene123(elapsed, dt);
+
+    // Update UI
+    const s = getSceneInfo(elapsed);
+    if(s.n !== prevScene){ prevScene=s.n; document.getElementById('scene-label').textContent=s.label; }
+    document.getElementById('progress-fill').style.width = (elapsed/TOTAL*100)+'%';
+    document.getElementById('time-display').textContent = elapsed.toFixed(1)+'s / '+TOTAL.toFixed(1)+'s';
+  }
+  render(getElapsed());
+  requestAnimationFrame(loop);
+}
+
+// ═══════════════════  CONTROLS  ═══════════════════
+function togglePause(){
+  paused=!paused;
+  if(paused){ pausedElapsed = getElapsed(); }
+  else { startTime = performance.now(); lastTime = startTime; }
+  document.getElementById('btn-pause').classList.toggle('active',paused);
+}
+function resetAnim(){
+  startTime = performance.now();
+  lastTime = startTime;
+  pausedElapsed = 0;
+  paused = false;
+  prevScene = -1;
+  // Reset all particle positions
+  bvParticles.forEach(p=>{p.x=p.restX;p.y=p.restY;p.charge=0;p.targetCharge=0;});
+  liParticles.forEach(p=>{p.x=p.restX;p.y=p.restY;p.vx=0;p.vy=0;});
+  bf4Particles.forEach(p=>{p.x=p.restX;p.y=p.restY;p.vx=0;p.vy=0;});
+  solvParticles.forEach(p=>{p.x=p.restX;p.y=p.restY;p.vx=0;p.vy=0;});
+  polyNodes.forEach(n=>{n.x=n.restX;n.y=n.restY;n.vx=0;n.vy=0;});
+  document.getElementById('btn-pause').classList.remove('active');
+}
+
+// Keyboard
+window.addEventListener('keydown',e=>{
+  switch(e.key.toLowerCase()){
+    case ' ': e.preventDefault(); togglePause(); break;
+    case 'r': resetAnim(); break;
+    case 'arrowright': pausedElapsed=(pausedElapsed+2)%TOTAL; break;
+    case 'arrowleft': pausedElapsed=(pausedElapsed-2+TOTAL)%TOTAL; break;
+  }
+});
+
+// Start
+startTime = performance.now();
+lastTime = startTime;
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
