@@ -105,19 +105,19 @@ const SW_PIN_R=sc(0.05), SW_PIN_L=sc(0.3);
 const layers=[{
   id:'ito-glass-top',num:1,name:'ITO 透明导电玻璃（上）',shortName:'ITO导电玻璃（上）',
   eng:'ITO Coated Glass — Top Electrode',
-  desc:'钠钙玻璃基底上磁控溅射 ITO (In₂O₃:Sn) 透明导电薄膜，一体成型。作为工作电极，为下方凝胶层提供均匀电场。',
+  desc:'作为器件两侧透明电极。外接电压后在器件内部构建均匀电场；同时具备高可见光透过率，便于直接观察变色现象。',
   materials:['钠钙玻璃','ITO (In₂O₃:Sn)','FTO','AZO'],
   color:0xa8cfd4,opacity:0.55,thickness:GLASS_THICK,metalness:0.08,roughness:0.18,clearcoat:0.4
 },{
   id:'gel-layer',num:2,name:'凝胶变色层',shortName:'凝胶变色层',
   eng:'Gel Electrochromic Composite Layer',
-  desc:'器件核心——WO₃ + 电解质 + NiO 离子存储复合一体化凝胶。开关拨至 1 档 → +3V → 紫罗兰色着色；拨回 0 档 → -3V → 恢复透明。',
+  desc:'凝胶兼具离子传导介质与功能载体双重作用；苄基紫精为电致变色核心材料。在外加电场作用下，苄基紫精发生可逆氧化还原反应，实现无色与蓝紫色之间可逆切换。',
   materials:['WO₃/PEDOT:PSS','LiClO₄/PC 电解质','NiO/CeO₂ 离子存储','PMMA 凝胶基质'],
   color:0xe8dfd0,colorOn:0x7b5ea7,opacity:0.58,thickness:GEL_THICK,metalness:0.0,roughness:0.55,isGel:true
 },{
   id:'ito-glass-bottom',num:3,name:'ITO 透明导电玻璃（下）',shortName:'ITO导电玻璃（下）',
   eng:'ITO Coated Glass — Bottom Electrode',
-  desc:'底部 ITO 导电玻璃，与上层对称。作为对电极，施加反向电压时驱动 Li⁺ 迁回。上下玻璃通过边缘环氧树脂密封。',
+  desc:'作为器件两侧透明电极。外接电压后在器件内部构建均匀电场；同时具备高可见光透过率，便于直接观察变色现象。',
   materials:['钠钙玻璃','ITO (In₂O₃:Sn)','FTO','AZO'],
   color:0xa8cfd4,opacity:0.55,thickness:GLASS_THICK,metalness:0.08,roughness:0.18,clearcoat:0.4
 }];
