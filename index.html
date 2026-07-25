@@ -416,24 +416,44 @@ function toggleDims(){if(currentView!=='stacked')return;showAnnotations=!showAnn
 // ═══════════════════════════
 //  TOGGLE SWITCH — 0档(透明) / 1档(着色)
 // ═══════════════════════════
-function toggleSwitch(){switchOn=!switchOn;applyGelColor();updateToggleVisual();updateSwitchUI();const btn=document.getElementById('btn-switch');btn.classList.toggle('active',switchOn);btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';}
-function applyGelColor(){
+let gelTween=null;
+function startGelTransition(targetOn){
   const gel=layerMeshes[1];const d=layers[1];
-  if(switchOn){
-    gel.material.color.set(d.colorOn);
-    gel.material.opacity=0.78;
-    gel.material.emissive=new THREE.Color(d.colorOn);
-    gel.material.emissiveIntensity=0.35;
-    gel.material.attenuationColor=new THREE.Color(d.colorOn);
-    gel.material.attenuationDistance=0.5;
-  }else{
-    gel.material.color.set(d.color);
-    gel.material.opacity=d.opacity;
-    gel.material.emissive=new THREE.Color(0x000000);
-    gel.material.emissiveIntensity=0;
-    gel.material.attenuationColor=new THREE.Color(0xe8dfd0);
-    gel.material.attenuationDistance=0.8;
-  }
+  const offColor=new THREE.Color(d.color),onColor=new THREE.Color(d.colorOn);
+  gelTween={
+    startTime:performance.now(),duration:1800,
+    fromColor:gel.material.color.clone(),fromOpacity:gel.material.opacity,
+    fromEmissiveIntensity:gel.material.emissiveIntensity,
+    fromAttenuationColor:gel.material.attenuationColor.clone(),
+    fromAttenuationDistance:gel.material.attenuationDistance,
+    toColor:targetOn?onColor:offColor,
+    toOpacity:targetOn?0.78:d.opacity,
+    toEmissiveIntensity:targetOn?0.35:0,
+    toAttenuationColor:targetOn?onColor.clone():offColor.clone(),
+    toAttenuationDistance:targetOn?0.5:0.8
+  };
+}
+function updateGelTransition(now){
+  if(!gelTween)return;
+  const t=Math.min((now-gelTween.startTime)/gelTween.duration,1);
+  const ease=t<0.5?2*t*t:-1+(4-2*t)*t;
+  const gel=layerMeshes[1];
+  gel.material.color.copy(gelTween.fromColor).lerp(gelTween.toColor,ease);
+  gel.material.opacity=gelTween.fromOpacity+(gelTween.toOpacity-gelTween.fromOpacity)*ease;
+  gel.material.emissive=new THREE.Color().copy(gelTween.fromColor).lerp(gelTween.toColor,ease);
+  gel.material.emissiveIntensity=gelTween.fromEmissiveIntensity+(gelTween.toEmissiveIntensity-gelTween.fromEmissiveIntensity)*ease;
+  gel.material.attenuationColor.copy(gelTween.fromAttenuationColor).lerp(gelTween.toAttenuationColor,ease);
+  gel.material.attenuationDistance=gelTween.fromAttenuationDistance+(gelTween.toAttenuationDistance-gelTween.fromAttenuationDistance)*ease;
+  if(t>=1)gelTween=null;
+}
+function toggleSwitch(){
+  switchOn=!switchOn;
+  startGelTransition(switchOn);
+  updateToggleVisual();
+  updateSwitchUI();
+  const btn=document.getElementById("btn-switch");
+  btn.classList.toggle("active",switchOn);
+  btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';
 }
 function updateToggleVisual(){togglePivot.rotation.x=switchOn?-0.55:0.55;if(switchOn)ledDot.material=ledOnMat2.clone();else ledDot.material=ledOffMat2.clone();}
 function updateSwitchUI(){const bar=document.getElementById('switch-label-bar');if(currentView==='stacked'){bar.classList.add('visible');document.getElementById('status-dot').style.background=switchOn?'#9b7fd4':'#666';document.getElementById('status-dot').style.boxShadow=switchOn?'0 0 10px #9b7fd4':'0 0 4px #666';document.getElementById('status-text').textContent=switchOn?'凝胶层：紫罗兰色 (1 档 — 着色态)':'凝胶层：透明 (0 档 — 褪色态)';}else{bar.classList.remove('visible');}}
@@ -495,7 +515,7 @@ shortcutData.forEach(([key,desc])=>{
 
 // RENDER LOOP
 const clock=new THREE.Clock();
-function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();controls.update();if(selectedLayer){const p=1+Math.sin(performance.now()*0.005)*0.015;selectedLayer.scale.set(p,1,p);}if(switchOn&&currentView==='stacked'){ledDot.material.emissiveIntensity=2.5*(1+Math.sin(performance.now()*0.008)*0.4);}pts.rotation.y+=dt*0.03;pts.rotation.x+=dt*0.015;renderer.render(scene,camera);}
+function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();updateGelTransition(performance.now());controls.update();if(selectedLayer){const p=1+Math.sin(performance.now()*0.005)*0.015;selectedLayer.scale.set(p,1,p);}if(switchOn&&currentView==='stacked'){ledDot.material.emissiveIntensity=2.5*(1+Math.sin(performance.now()*0.008)*0.4);}pts.rotation.y+=dt*0.03;pts.rotation.x+=dt*0.015;renderer.render(scene,camera);}
 
 // Events
 window.addEventListener('resize',()=>{camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);});
