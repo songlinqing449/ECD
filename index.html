@@ -242,6 +242,22 @@ const plate=new THREE.Mesh(plateGeo,new THREE.MeshStandardMaterial({color:0x2424
 plate.position.y=BASE_H/2+0.04;plate.receiveShadow=true;
 baseGroup.add(plate);
 
+// The dimension view uses a non-destructive x-ray treatment for the base only.
+// Battery, tray and all device mechanics keep their original geometry and materials.
+function setBaseXRay(enabled){
+  baseBodyMat.transparent=enabled;
+  baseBodyMat.opacity=enabled?0.16:1;
+  baseBodyMat.depthWrite=!enabled;
+  plate.material.transparent=enabled;
+  plate.material.opacity=enabled?0.24:1;
+  plate.material.depthWrite=!enabled;
+  baseBody.renderOrder=enabled?1:0;
+  plate.renderOrder=enabled?1:0;
+  battGroup.renderOrder=enabled?2:0;
+  baseBodyMat.needsUpdate=true;
+  plate.material.needsUpdate=true;
+}
+
 // ═══════════════════════════
 //  BATTERY COMPARTMENT
 // ═══════════════════════════
@@ -421,7 +437,7 @@ function layoutExploded(){
   let y=totalH/2;
   for(let i=0;i<layerMeshes.length;i++){y-=layers[i].thickness/2;layerMeshes[i].position.y=y;layerMeshes[i].rotation.x=0;y-=layers[i].thickness/2+gap;}
   coreGroup.rotation.x=0;coreGroup.position.set(0,0,0);
-  frameGroup.visible=false;baseGroup.visible=false;clearAnnotations();
+  frameGroup.visible=false;baseGroup.visible=false;setBaseXRay(false);clearAnnotations();
   document.getElementById('switch-label-bar').classList.remove('visible');
   updateDashLines(true);updateLabels(true);
   document.getElementById('btn-dims').style.opacity='0.4';
@@ -433,7 +449,7 @@ function layoutStacked(){
   const totalH=layers.reduce((s,l)=>s+l.thickness,0);
   for(let i=0;i<layerMeshes.length;i++)layerMeshes[i].position.y-=totalH/2;
   coreGroup.rotation.x=-Math.PI/2;coreGroup.position.set(0,0,0);
-  baseGroup.position.set(0,-FRAME_OUTER/2-BASE_H/2-0.06,0);baseGroup.rotation.set(0,0,0);baseGroup.visible=true;
+  baseGroup.position.set(0,-FRAME_OUTER/2-BASE_H/2-0.06,0);baseGroup.rotation.set(0,0,0);baseGroup.visible=true;setBaseXRay(showAnnotations);
   frameGroup.visible=true;
   updateDashLines(false);updateLabels(false);
   buildAnnotations();updateSwitchUI();
@@ -442,7 +458,7 @@ function layoutStacked(){
 
 function setView(view){currentView=view;document.getElementById('btn-exploded').classList.toggle('active',view==='exploded');document.getElementById('btn-stacked').classList.toggle('active',view==='stacked');if(view==='exploded')layoutExploded();else layoutStacked();closeDetail();}
 
-function toggleDims(){if(currentView!=='stacked')return;showAnnotations=!showAnnotations;document.getElementById('btn-dims').classList.toggle('active',showAnnotations);buildAnnotations();}
+function toggleDims(){if(currentView!=='stacked')return;showAnnotations=!showAnnotations;document.getElementById('btn-dims').classList.toggle('active',showAnnotations);setBaseXRay(showAnnotations);buildAnnotations();}
 
 // ═══════════════════════════
 //  TOGGLE SWITCH — 0档(透明) / 1档(着色)
