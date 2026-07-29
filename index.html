@@ -254,6 +254,7 @@ function setBaseXRay(enabled){
   baseBody.renderOrder=enabled?1:0;
   plate.renderOrder=enabled?1:0;
   battGroup.renderOrder=enabled?2:0;
+  trayMaterials.forEach(m=>{m.transparent=enabled;m.opacity=enabled?0.62:1;m.depthWrite=!enabled;m.needsUpdate=true;});
   baseBodyMat.needsUpdate=true;
   plate.material.needsUpdate=true;
 }
@@ -263,9 +264,11 @@ function setBaseXRay(enabled){
 // ═══════════════════════════
 const battGroup=new THREE.Group();baseGroup.add(battGroup);
 const battFloorY=0.04;
+const trayMaterials=[];
 
 const compGeo=new THREE.BoxGeometry(BATT_L,BATT_D,BATT_W);
-const comp=new THREE.Mesh(compGeo,new THREE.MeshStandardMaterial({color:0x121215,roughness:0.8,metalness:0.03}));
+const compMat=new THREE.MeshStandardMaterial({color:0x121215,roughness:0.8,metalness:0.03});trayMaterials.push(compMat);
+const comp=new THREE.Mesh(compGeo,compMat);
 comp.position.set(0,battFloorY+BATT_D/2,0);battGroup.add(comp);
 
 const floorGeo=new THREE.BoxGeometry(BATT_L-0.12,0.03,BATT_W-0.12);
@@ -274,7 +277,8 @@ floor2.position.set(0,battFloorY+0.025,0);battGroup.add(floor2);
 
 function addBattWall(x,y,z,w,h,d){
   const g=new THREE.BoxGeometry(w,h,d);
-  const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0x18181c,roughness:0.75,metalness:0.04}));
+  const wallMat=new THREE.MeshStandardMaterial({color:0x18181c,roughness:0.75,metalness:0.04});trayMaterials.push(wallMat);
+  const m=new THREE.Mesh(g,wallMat);
   m.position.set(x,y,z);battGroup.add(m);
 }
 const wallT=0.06;
@@ -336,42 +340,25 @@ const switchGroup=new THREE.Group();switchGroup.userData={isSwitch:true};
 switchGroup.position.set(BASE_L*0.25,BASE_H,BASE_W*0.28);
 baseGroup.add(switchGroup);
 
-const swBodyGeo=new THREE.CylinderGeometry(SW_R,SW_R,SW_H,32);
-const swBody=new THREE.Mesh(swBodyGeo,new THREE.MeshStandardMaterial({color:0x3a3a3e,metalness:0.5,roughness:0.3}));
-swBody.position.y=SW_H/2;swBody.castShadow=true;switchGroup.add(swBody);
-
-const collarGeo=new THREE.CylinderGeometry(SW_COLLAR_R*0.92,SW_COLLAR_R,SW_COLLAR_H,32);
-const collar=new THREE.Mesh(collarGeo,new THREE.MeshStandardMaterial({color:0x888888,metalness:0.8,roughness:0.2}));
-collar.position.y=SW_H+SW_COLLAR_H/2;switchGroup.add(collar);
-
+// Recessed rocker switch: same mounting position and click target as the original toggle.
+const rockerW=sc(1.25),rockerD=sc(0.82),bezelH=sc(0.13);
+const bezel=new THREE.Mesh(new THREE.BoxGeometry(rockerW,bezelH,rockerD),new THREE.MeshStandardMaterial({color:0x111116,metalness:0.42,roughness:0.34}));
+bezel.position.y=bezelH/2;bezel.castShadow=true;bezel.receiveShadow=true;switchGroup.add(bezel);
+const rockerWell=new THREE.Mesh(new THREE.BoxGeometry(rockerW-sc(0.13),bezelH*0.55,rockerD-sc(0.13)),new THREE.MeshStandardMaterial({color:0x050507,roughness:0.62}));
+rockerWell.position.y=bezelH+bezelH*0.12;switchGroup.add(rockerWell);
 const togglePivot=new THREE.Group();
-togglePivot.position.y=SW_H+SW_COLLAR_H*0.6;
-switchGroup.add(togglePivot);
-
-const leverGeo=new THREE.CylinderGeometry(SW_LEVER_R*0.7,SW_LEVER_R,SW_LEVER_L,16);
-const leverMat2=new THREE.MeshStandardMaterial({color:0xcccccc,metalness:0.8,roughness:0.2});
-const lever=new THREE.Mesh(leverGeo,leverMat2);
-lever.position.y=SW_LEVER_L/2;lever.castShadow=true;togglePivot.add(lever);
-
-const tipGeo=new THREE.SphereGeometry(SW_TIP_R,16,8);
-const tip=new THREE.Mesh(tipGeo,leverMat2);
-tip.position.y=SW_LEVER_L+SW_TIP_R*0.3;togglePivot.add(tip);
-
-const pinMat=new THREE.MeshStandardMaterial({color:0x999999,metalness:0.9,roughness:0.2});
-for(let row=0;row<2;row++){
-  for(let col=0;col<3;col++){
-    const pinGeo2=new THREE.CylinderGeometry(SW_PIN_R,SW_PIN_R*0.8,SW_PIN_L,8);
-    const pin=new THREE.Mesh(pinGeo2,pinMat);
-    pin.position.set((col-1)*SW_R*0.55,-SW_PIN_L/2,(row-0.5)*SW_R*0.65);
-    switchGroup.add(pin);
-  }
-}
+togglePivot.position.y=bezelH+bezelH*0.32;switchGroup.add(togglePivot);
+const rockerMat=new THREE.MeshStandardMaterial({color:0x34343a,metalness:0.3,roughness:0.28});
+const rocker=new THREE.Mesh(new THREE.BoxGeometry(rockerW-sc(0.19),sc(0.13),rockerD-sc(0.19)),rockerMat);
+rocker.position.y=sc(0.06);rocker.castShadow=true;rocker.receiveShadow=true;togglePivot.add(rocker);
+const rockerInset=new THREE.Mesh(new THREE.BoxGeometry(rockerW-sc(0.38),sc(0.012),sc(0.09)),new THREE.MeshStandardMaterial({color:0x85858e,metalness:0.45,roughness:0.25}));
+rockerInset.position.set(0,sc(0.135),0);togglePivot.add(rockerInset);
 
 const ledGeo2=new THREE.SphereGeometry(0.015,8,8);
 const ledOffMat2=new THREE.MeshStandardMaterial({color:0x442222,emissive:0x220000,emissiveIntensity:0.5,roughness:0.3});
 const ledOnMat2=new THREE.MeshStandardMaterial({color:0x9966dd,emissive:0x6633aa,emissiveIntensity:2.5,roughness:0.3});
 const ledDot=new THREE.Mesh(ledGeo2,ledOffMat2);
-ledDot.position.set(SW_R*0.55,SW_H*0.55,0);switchGroup.add(ledDot);
+ledDot.position.set(rockerW*0.36,bezelH+sc(0.045),rockerD*0.33);switchGroup.add(ledDot);
 
 // ═══════════════════════════
 //  DASHED LINES (exploded)
@@ -502,7 +489,7 @@ function toggleSwitch(){
   btn.classList.toggle("active",switchOn);
   btn.textContent=switchOn?'⚡ 拨至 0 档 — 褪色':'⚡ 开关变色 (0→1)';
 }
-function updateToggleVisual(){togglePivot.rotation.x=switchOn?-0.55:0.55;if(switchOn)ledDot.material=ledOnMat2.clone();else ledDot.material=ledOffMat2.clone();}
+function updateToggleVisual(){togglePivot.rotation.z=switchOn?-0.2:0.2;if(switchOn)ledDot.material=ledOnMat2.clone();else ledDot.material=ledOffMat2.clone();}
 function updateSwitchUI(){const bar=document.getElementById('switch-label-bar');if(currentView==='stacked'){bar.classList.add('visible');document.getElementById('status-dot').style.background=switchOn?'#9b7fd4':'#666';document.getElementById('status-dot').style.boxShadow=switchOn?'0 0 10px #9b7fd4':'0 0 4px #666';document.getElementById('status-text').textContent=switchOn?'凝胶层：紫罗兰色 (1 档 — 着色态)':'凝胶层：透明 (0 档 — 褪色态)';}else{bar.classList.remove('visible');}}
 
 // ═══════════════════════════
